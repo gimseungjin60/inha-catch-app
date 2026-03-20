@@ -25,16 +25,30 @@ export default function HomeScreen() {
   useEffect(() => {
     const fetchFromMySQL = async () => {
       try {
-        // 웹 브라우저 테스트 시 localhost 사용
         const response = await fetch('http://localhost:8080/api/scholarships');
-        const data = await response.json();
-        setScholarships(data);
+        const raw = await response.text();
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${raw}`);
+        }
+
+        let data: any;
+        try {
+          data = JSON.parse(raw);
+        } catch (e) {
+          console.error('JSON 파싱 실패, 응답 원문 앞부분:', raw.slice(0, 500));
+          throw e;
+        }
+
+        setScholarships(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error("DB 연결 실패:", error);
       }
     };
+
     fetchFromMySQL();
   }, []);
+
 
   const filteredData = scholarships.filter(item => 
     filter === 'all' ? true : item.category === filter
