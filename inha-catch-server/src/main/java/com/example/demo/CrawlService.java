@@ -1,5 +1,7 @@
 package com.example.demo;
 
+import com.example.demo.entity.Scholarship;
+import com.example.demo.entity.ScholarshipAttachment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
