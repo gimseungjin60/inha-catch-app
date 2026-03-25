@@ -95,4 +95,27 @@ public class Scholarship {
 
     @OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ScholarshipAttachment> attachments = new ArrayList<>();
+
+    @Transient
+    public String getDDay() {
+        if (applyPeriod == null || applyPeriod.trim().isEmpty()) return "상시";
+        try {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{4})[./-](\\d{2})[./-](\\d{2})").matcher(applyPeriod);
+            String lastDateStr = null;
+            while (m.find()) {
+                lastDateStr = m.group();
+            }
+            if (lastDateStr != null) {
+                lastDateStr = lastDateStr.replaceAll("[./]", "-");
+                java.time.LocalDate endDate = java.time.LocalDate.parse(lastDateStr);
+                long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), endDate);
+                if (daysBetween < 0) return "마감";
+                if (daysBetween == 0) return "D-Day";
+                return "D-" + daysBetween;
+            }
+        } catch (Exception e) {
+            // ignore parse errors
+        }
+        return "상시";
+    }
 }

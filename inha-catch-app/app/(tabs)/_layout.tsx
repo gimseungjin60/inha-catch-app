@@ -1,36 +1,33 @@
 import React from 'react';
-<<<<<<< HEAD
-import { SymbolView } from 'expo-symbols';
-import { Link, Tabs } from 'expo-router';
-import { Platform, Pressable } from 'react-native';
-
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
-=======
 import { Tabs } from 'expo-router';
-import { Home, Search, Bookmark, Bell } from 'lucide-react-native';
+import { Home, Search, Bookmark, Bell, UserCircle } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
+import { useUser } from '@/context/UserContext';
+import { Redirect } from 'expo-router';
+import { View, ActivityIndicator } from 'react-native';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
->>>>>>> feature/B
+  const { profile, isLoading } = useUser();
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (!profile.isLoggedIn) {
+    return <Redirect href="/" />;
+  }
 
   return (
     <Tabs
       screenOptions={{
-<<<<<<< HEAD
-        tabBarActiveTintColor: Colors[colorScheme].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
-=======
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.tabIconDefault,
         headerShown: false,
@@ -46,56 +43,10 @@ export default function TabLayout() {
           fontSize: 12,
           fontWeight: '500',
         }
->>>>>>> feature/B
       }}>
       <Tabs.Screen
         name="index"
         options={{
-<<<<<<< HEAD
-          title: 'Tab One',
-          tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
-              }}
-              tintColor={color}
-              size={28}
-            />
-          ),
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable style={{ marginRight: 15 }}>
-                {({ pressed }) => (
-                  <SymbolView
-                    name={{ ios: 'info.circle', android: 'info', web: 'info' }}
-                    size={25}
-                    tintColor={Colors[colorScheme].text}
-                    style={{ opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="two"
-        options={{
-          title: 'Tab Two',
-          tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
-              }}
-              tintColor={color}
-              size={28}
-            />
-          ),
-=======
           title: '홈',
           tabBarIcon: ({ color }) => <Home color={color} size={24} />,
         }}
@@ -119,9 +70,17 @@ export default function TabLayout() {
         options={{
           title: '알림',
           tabBarIcon: ({ color }) => <Bell color={color} size={24} />,
->>>>>>> feature/B
         }}
       />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: '내 정보',
+          tabBarIcon: ({ color }) => <UserCircle color={color} size={24} />,
+        }}
+      />
+      {/* Hide the default template 'two' tab if it's not meant to be seen */}
+      <Tabs.Screen name="two" options={{ href: null }} />
     </Tabs>
   );
 }

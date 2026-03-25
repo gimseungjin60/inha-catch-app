@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Bookmark, Sparkles, Award, Trophy } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { Link } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useBookmarks } from '@/context/BookmarkContext';
 
 export interface Scholarship {
   id: number;
@@ -18,14 +19,16 @@ export interface Scholarship {
 export default function ScholarshipCard({ item }: { item: Scholarship }) {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
+  const router = useRouter();
+  const { bookmarkedIds, toggleBookmark, isBookmarked } = useBookmarks();
+  const bookmarked = isBookmarked(item.id);
 
   return (
-    <Link href={`/details/${item.id}`} asChild>
-      <Pressable>
-        <View style={[styles.card, { backgroundColor: colors.cardBackground }]}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.badges}>
+    <Pressable onPress={() => router.push(`/details/${item.id}` as any)}>
+      <View style={[styles.card, { backgroundColor: colors.cardBackground }]}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.badges}>
               {/* Type Badge */}
               <View style={styles.typeBadge}>
                  {item.type === 'scholarship' 
@@ -44,9 +47,15 @@ export default function ScholarshipCard({ item }: { item: Scholarship }) {
                 </View>
               )}
             </View>
-            <View>
-              <Bookmark size={24} color={colors.primary} />
-            </View>
+            <Pressable 
+                style={{ padding: 8, margin: -8 }}
+                onPress={(e) => {
+                    e.stopPropagation();
+                    toggleBookmark(item.id);
+                }}
+            >
+              <Bookmark size={24} color={colors.primary} fill={bookmarked ? colors.primary : 'transparent'} />
+            </Pressable>
           </View>
 
           {/* Title */}
@@ -80,9 +89,8 @@ export default function ScholarshipCard({ item }: { item: Scholarship }) {
                 <Text style={[styles.ddayText, { color: colors.primary }]}>D-{item.dDay}</Text>
              </View>
           </View>
-        </View>
-      </Pressable>
-    </Link>
+      </View>
+    </Pressable>
   );
 }
 
