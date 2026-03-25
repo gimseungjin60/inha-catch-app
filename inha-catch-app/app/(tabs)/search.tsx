@@ -1,141 +1,112 @@
-import React from 'react';
-import { StyleSheet, View, Text, ScrollView, TextInput, SafeAreaView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TextInput, FlatList, ActivityIndicator, Platform, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Search } from 'lucide-react-native';
+import axios from 'axios';
+import ScholarshipCard, { Scholarship } from '@/components/ScholarshipCard';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { Search as SearchIcon } from 'lucide-react-native';
-import ScholarshipCard, { Scholarship } from '@/components/ScholarshipCard';
-
-const DUMMY_DATA: Scholarship[] = [
-  {
-    id: 1,
-    type: 'scholarship',
-    isRecommended: true,
-    title: '인하대학교 우수장학금 2026',
-    aiSummary: ['공학·경영 전공 학점 3.8 이상', '전액 등록금 + 월 50만원', '2026년 4월 15일 (29일 남음)'],
-    tags: ['#공학', '#경영', '#추가태그1'],
-    dDay: 30,
-  },
-  {
-    id: 2,
-    type: 'contest',
-    isRecommended: true,
-    title: 'K-스타트업 혁신 공모전 2026',
-    aiSummary: ['스타트업 아이디어 보유 대학생', '최대 1천만원 + 멘토링', '2026년 3월 25일 (8일 남음)'],
-    tags: ['#스타트업', '#혁신', '#IT'],
-    dDay: 9,
-  }
-];
 
 export default function SearchScreen() {
+  const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
 
+  const [keyword, setKeyword] = useState('');
+  const [results, setResults] = useState<Scholarship[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  const performSearch = () => {
+    if (!keyword.trim()) return;
+    setLoading(true);
+    setHasSearched(true);
+    
+    const apiUrl = Platform.OS === 'android' ? 'http://10.0.2.2:8080' : 'http://localhost:8080';
+    axios.get(`${apiUrl}/api/scholarships/search?keyword=${encodeURIComponent(keyword)}&size=100`)
+      .then(res => {
+        const rawData = res.data.content || res.data;
+        const mapped: Scholarship[] = rawData.map((d: any) => {
+          const tags = [];
+          if (d.title.includes('공모전')) tags.push('#공모전');
+          else tags.push('#장학금');
+          if (d.eligibility && d.eligibility.length < 10) tags.push('#' + d.eligibility);
+          
+          return {
+            id: d.id,
+            type: d.title.includes('공모전') ? 'contest' : 'scholarship',
+            isRecommended: d.viewCount && d.viewCount > 100,
+            title: d.title,
+            aiSummary: [
+              d.eligibility || '자격 조건은 상세 요강 참조',
+              d.amountInfo || '지원 내역은 상세 요강 참조',
+              d.applyPeriod || '모집 기한은 상세 요강 참조'
+            ],
+            tags: tags.length ? tags : ['#인하대'],
+            dDay: d.dDay || '상시',
+          };
+        });
+        setResults(mapped);
+      })
+      .catch(err => console.error(err))
+      .finally(() => setLoading(false));
+  };
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.screenBackground }]}>
-      {/* Top Header Section */}
-      <View style={[styles.header, { backgroundColor: colors.primary }]}>
-        <SafeAreaView>
-          <Text style={styles.titleText}>검색 & 필터</Text>
-          <View style={styles.searchBar}>
-            <SearchIcon color={colors.tabIconDefault} size={20} style={{ marginRight: 8 }} />
-            <TextInput 
-              placeholder="장학금, 공모전 검색..." 
-              placeholderTextColor={colors.tabIconDefault}
-              style={styles.searchInput}
-            />
-          </View>
-        </SafeAreaView>
+    <View style={[styles.container, { backgroundColor: colors.screenBackground, paddingTop: insets.top }]}>
+      <View style={[styles.header, { backgroundColor: colors.cardBackground }]}>
+        <View style={styles.searchBar}>
+          <Search size={20} color="#94a3b8" style={styles.searchIcon} />
+          <TextInput
+            style={[styles.input, { color: colors.text }]}
+            placeholder="장학금, 공모전 키워드로 검색해보세요."
+            placeholderTextColor="#94a3b8"
+            value={keyword}
+            onChangeText={setKeyword}
+            onSubmitEditing={performSearch}
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+          {keyword.length > 0 && (
+            <Pressable onPress={() => { setKeyword(''); setHasSearched(false); setResults([]); }} style={styles.clearBtn}>
+              <Text style={styles.clearText}>X</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.contentContainer}>
-        {/* Popular Tags */}
-        <View style={styles.tagsSection}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>📈 인기 태그</Text>
-          <View style={styles.tagsGrid}>
-            {['#AI', '#공학', '#전액장학금', '#스타트업', '#유학생', '#STEM'].map(tag => (
-              <View key={tag} style={[styles.popularTag, { borderColor: colors.border }]}>
-                <Text style={{ color: colors.tagText }}>{tag}</Text>
-              </View>
-            ))}
-          </View>
+      {loading ? (
+        <ActivityIndicator size="large" color={colors.primary} style={styles.centerBox} />
+      ) : hasSearched && results.length === 0 ? (
+        <View style={styles.centerBox}>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>'{keyword}'에 대한 검색 결과가 없습니다.</Text>
         </View>
-
-        {/* Results List */}
-        <View style={styles.listHeader}>
-          <Text style={[styles.listTitle, { color: colors.text }]}>전체 공고</Text>
-          <Text style={styles.countText}>{DUMMY_DATA.length}개</Text>
+      ) : !hasSearched ? (
+        <View style={styles.centerBox}>
+          <Search size={48} color={colors.border || '#e2e8f0'} style={{ marginBottom: 16 }} />
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>원하시는 공고를 검색해 보세요!</Text>
         </View>
-
-        {DUMMY_DATA.map((item) => (
-          <ScholarshipCard key={item.id} item={item} />
-        ))}
-      </ScrollView>
+      ) : (
+        <FlatList
+          data={results}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.listContainer}
+          renderItem={({ item }) => <ScholarshipCard item={item} />}
+        />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    paddingTop: 60,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-  },
-  titleText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 16,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: '#111',
-  },
-  contentContainer: {
-    padding: 20,
-  },
-  tagsSection: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 12,
-  },
-  tagsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  popularTag: {
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-  },
-  listHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  listTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  countText: {
-    fontSize: 14,
-    color: '#5A6B87',
-    fontWeight: '500',
-  }
+  header: { padding: 16, elevation: 2 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: 12, paddingHorizontal: 12, height: 48 },
+  searchIcon: { marginRight: 8 },
+  input: { flex: 1, fontSize: 16 },
+  clearBtn: { padding: 8 },
+  clearText: { color: '#94a3b8', fontSize: 16, fontWeight: 'bold' },
+  centerBox: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 100 },
+  emptyText: { fontSize: 15 },
+  listContainer: { padding: 20, paddingBottom: 100 }
 });

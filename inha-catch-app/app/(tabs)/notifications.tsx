@@ -1,12 +1,84 @@
-import React from 'react';
-import { StyleSheet, View, Text, ScrollView, SafeAreaView } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View, Text, ScrollView, SafeAreaView, ActivityIndicator, Platform, TouchableOpacity } from 'react-native';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { Bell, Sparkles, CalendarClock, Award } from 'lucide-react-native';
+import { useBookmarks } from '@/context/BookmarkContext';
+import { useRouter } from 'expo-router';
+import axios from 'axios';
+import { Scholarship } from '@/components/ScholarshipCard';
+
+type AppNotification = {
+  id: string;
+  scholarshipId: number;
+  type: 'deadline' | 'new';
+  title: string;
+  message: string;
+  timeStr: string;
+};
 
 export default function NotificationsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
+  const router = useRouter();
+  
+  const { bookmarkedIds } = useBookmarks();
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const apiUrl = Platform.OS === 'android' ? 'http://10.0.2.2:8080' : 'http://localhost:8080';
+    axios.get(`${apiUrl}/api/scholarships?size=200`)
+      .then(res => {
+        const rawData = res.data.content || res.data;
+        const mapped: Scholarship[] = rawData.map((d: any) => ({
+          id: d.id,
+          type: d.title.includes('공모전') ? 'contest' : 'scholarship',
+          isRecommended: d.viewCount && d.viewCount > 100,
+          title: d.title,
+          aiSummary: [],
+          tags: [],
+          dDay: d.dDay || '상시',
+        }));
+
+        let newNotis: AppNotification[] = [];
+
+        // 1. 마감 임박 알림 (북마크 한 것 중 D-3 이하)
+        const bookmarked = mapped.filter(item => bookmarkedIds.includes(item.id));
+        bookmarked.forEach(item => {
+          if (item.dDay.startsWith('D-') || item.dDay === 'D-Day') {
+            const num = item.dDay === 'D-Day' ? 0 : parseInt(item.dDay.replace('D-', ''), 10);
+            if (!isNaN(num) && num <= 3) {
+              newNotis.push({
+                id: `deadline-${item.id}`,
+                scholarshipId: item.id,
+                type: 'deadline',
+                title: '마감 임박',
+                message: `[${item.title}] 지원 마감이 ${num === 0 ? '오늘입니다!' : num + '일 남았습니다.'}`,
+                timeStr: '방금 전'
+              });
+            }
+          }
+        });
+
+        // 2. 신규 등록 알림 (최신 5개)
+        const recent = mapped.slice(0, 5);
+        recent.forEach(item => {
+          newNotis.push({
+            id: `new-${item.id}`,
+            scholarshipId: item.id,
+            type: 'new',
+            title: '신규 공고',
+            message: `새로운 ${item.type === 'scholarship' ? '장학금' : '공모전'}이 등록되었습니다: [${item.title}]`,
+            timeStr: '오늘'
+          });
+        });
+
+        setNotifications(newNotis);
+      })
+      .catch(err => console.error(err))
+      .finally(() => setLoading(false));
+  }, [bookmarkedIds]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.screenBackground }]}>
@@ -19,72 +91,46 @@ export default function NotificationsScreen() {
               <Text style={styles.titleText}>알림</Text>
             </View>
             <View style={styles.badgeCount}>
-              <Text style={styles.badgeText}>2개</Text>
+              <Text style={styles.badgeText}>{notifications.length}개</Text>
             </View>
           </View>
-          <Text style={styles.subtitleText}>최신 공고를 확인하세요</Text>
+          <Text style={styles.subtitleText}>최신 공고와 마감일정을 확인하세요</Text>
         </SafeAreaView>
       </View>
 
-      <ScrollView contentContainerStyle={styles.contentContainer}>
-        {/* AI Recommendations */}
-        <View style={styles.sectionHeader}>
-          <Sparkles color={colors.primary} size={20} />
-          <Text style={[styles.sectionTitle, { color: colors.text }]}> AI 추천</Text>
-        </View>
-        
-        <View style={[styles.aiBox, { backgroundColor: colors.aiBoxBackground, borderColor: '#D9E4FF', borderWidth: 1 }]}>
-          <Text style={{ color: colors.textSecondary, marginBottom: 16, lineHeight: 20 }}>
-            회원님의 관심사와 프로필을 바탕으로 4개의 새로운 공고를 찾았습니다
-          </Text>
-          <Text style={{ color: colors.primary, fontWeight: 'bold' }}>추천 보기 →</Text>
-        </View>
+      {loading ? (
+        <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+      ) : (
+        <ScrollView contentContainerStyle={styles.contentContainer}>
+          <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 16 }]}>전체 알림</Text>
 
-        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 16, marginTop: 12 }]}>전체 알림</Text>
-
-        {/* Noti Item 1 */}
-        <View style={[styles.notiCard, { backgroundColor: colors.cardBackground, borderColor: colors.primary }]}>
-          <View style={styles.notiIconWrap}>
-             <Sparkles color={colors.primary} size={20} />
-          </View>
-          <View style={styles.notiContent}>
-             <View style={styles.notiTitleRow}>
-               <Text style={[styles.notiTitle, { color: colors.text }]}>새로운 추천</Text>
-               <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
-             </View>
-             <Text style={[styles.notiDesc, { color: colors.textSecondary }]}>AI & 데이터 사이언스 경진대회 2026이 회원님의 기술 및 혁신 관심사와 일치합니다</Text>
-             <Text style={styles.notiTime}>2시간 전</Text>
-          </View>
-        </View>
-
-        {/* Noti Item 2 */}
-        <View style={[styles.notiCard, { backgroundColor: colors.cardBackground }]}>
-          <View style={styles.notiIconWrap}>
-             <CalendarClock color="#F44336" size={20} />
-          </View>
-          <View style={styles.notiContent}>
-             <View style={styles.notiTitleRow}>
-               <Text style={[styles.notiTitle, { color: colors.text }]}>마감 임박</Text>
-               <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
-             </View>
-             <Text style={[styles.notiDesc, { color: colors.textSecondary }]}>AI & 데이터 사이언스 경진대회 지원 마감이 3일 남았습니다</Text>
-             <Text style={styles.notiTime}>5시간 전</Text>
-          </View>
-        </View>
-
-        {/* Noti Item 3 */}
-        <View style={[styles.notiCard, { backgroundColor: colors.cardBackground }]}>
-          <View style={styles.notiIconWrap}>
-             <Award color="#9C27B0" size={20} />
-          </View>
-          <View style={styles.notiContent}>
-             <Text style={[styles.notiTitle, { color: colors.text }]}>신규 공고</Text>
-             <Text style={[styles.notiDesc, { color: colors.textSecondary }]}>STEM 여성 장학금 지원이 시작되었습니다</Text>
-             <Text style={styles.notiTime}>1일 전</Text>
-          </View>
-        </View>
-
-      </ScrollView>
+          {notifications.length === 0 ? (
+            <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 20 }}>새로운 알림이 없습니다.</Text>
+          ) : (
+            notifications.map((noti) => (
+              <TouchableOpacity 
+                key={noti.id}
+                activeOpacity={0.8}
+                onPress={() => router.push(`/details/${noti.scholarshipId}` as any)}
+              >
+                <View style={[styles.notiCard, { backgroundColor: colors.cardBackground, borderColor: noti.type === 'deadline' ? '#F44336' : 'transparent', borderWidth: noti.type === 'deadline' ? 1 : 0 }]}>
+                  <View style={styles.notiIconWrap}>
+                     {noti.type === 'deadline' ? <CalendarClock color="#F44336" size={20} /> : <Award color="#9C27B0" size={20} />}
+                  </View>
+                  <View style={styles.notiContent}>
+                     <View style={styles.notiTitleRow}>
+                       <Text style={[styles.notiTitle, { color: colors.text }]}>{noti.title}</Text>
+                       <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
+                     </View>
+                     <Text style={[styles.notiDesc, { color: colors.textSecondary }]}>{noti.message}</Text>
+                     <Text style={styles.notiTime}>{noti.timeStr}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -92,7 +138,7 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    paddingTop: 60,
+    paddingTop: Platform.OS === 'android' ? 60 : 20,
     paddingBottom: 20,
     paddingHorizontal: 20,
   },
@@ -127,28 +173,17 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 20,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
+    paddingBottom: 100
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-  },
-  aiBox: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 32,
   },
   notiCard: {
     flexDirection: 'row',
     padding: 16,
     borderRadius: 12,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'transparent',
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 5,

@@ -1,13 +1,5 @@
 package com.example.demo;
 
-<<<<<<< HEAD
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-
-@Repository
-public interface ScholarshipRepository extends JpaRepository<Scholarship, Long> {
-}
-=======
 import com.example.demo.entity.Scholarship;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -22,5 +14,6 @@ public interface ScholarshipRepository extends JpaRepository<Scholarship, Long> 
     Optional<Scholarship> findBySourceSiteAndBoardIdAndArticleId(String sourceSite, String boardId, Long articleId);
 
     boolean existsBySourceSiteAndBoardIdAndArticleId(String sourceSite, String boardId, Long articleId);
+
+    org.springframework.data.domain.Page<Scholarship> findByTitleContainingOrContentContainingOrSummaryContaining(String title, String content, String summary, org.springframework.data.domain.Pageable pageable);
 }
->>>>>>> feature/B
