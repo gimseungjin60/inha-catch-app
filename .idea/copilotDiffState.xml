@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CopilotDiffPersistence">
+    <option name="pendingDiffs">
+      <map>
+        <entry key="/build (snapshot).gradle">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="/build (snapshot).gradle" />
+              <option name="originalContent" value="plugins {&#10;&#9;id 'java'&#10;&#9;id 'org.springframework.boot' version '4.0.3'&#10;&#9;id 'io.spring.dependency-management' version '1.1.7'&#10;}&#10;&#10;group = 'kr.ac.inha'&#10;version = '0.0.1-SNAPSHOT'&#10;&#10;java {&#10;&#9;toolchain {&#10;&#9;&#9;languageVersion = JavaLanguageVersion.of(17)&#10;&#9;}&#10;}&#10;&#10;configurations {&#10;&#9;compileOnly {&#10;&#9;&#9;extendsFrom annotationProcessor&#10;&#9;}&#10;}&#10;&#10;repositories {&#10;&#9;mavenCentral()&#10;}&#10;&#10;dependencies {&#10;&#9;implementation 'org.springframework.boot:spring-boot-starter-data-jpa'&#10;&#9;implementation 'org.springframework.boot:spring-boot-starter-webmvc'&#10;&#9;compileOnly 'org.projectlombok:lombok'&#10;&#9;developmentOnly 'org.springframework.boot:spring-boot-devtools'&#10;&#9;runtimeOnly 'com.mysql:mysql-connector-j'&#10;&#9;annotationProcessor 'org.projectlombok:lombok'&#10;&#9;testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'&#10;&#9;testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'&#10;&#9;testRuntimeOnly 'org.junit.platform:junit-platform-launcher'&#10;&#10;&#9;implementation 'org.springframework.boot:spring-boot-starter-web'&#10;    testImplementation 'org.springframework.boot:spring-boot-starter-test'&#10;    implementation 'org.jsoup:jsoup:1.17.1'&#10;}&#10;&#10;tasks.named('test') {&#10;&#9;useJUnitPlatform()&#10;}&#10;" />
+              <option name="updatedContent" value="plugins {&#10;&#9;id 'java'&#10;&#9;id 'org.springframework.boot' version '3.2.0'&#10;&#9;id 'io.spring.dependency-management' version '1.1.7'&#10;}&#10;&#10;group = 'kr.ac.inha'&#10;version = '0.0.1-SNAPSHOT'&#10;&#10;java {&#10;&#9;toolchain {&#10;&#9;&#9;languageVersion = JavaLanguageVersion.of(17)&#10;&#9;}&#10;}&#10;&#10;configurations {&#10;&#9;compileOnly {&#10;&#9;&#9;extendsFrom annotationProcessor&#10;&#9;}&#10;}&#10;&#10;repositories {&#10;&#9;mavenCentral()&#10;}&#10;&#10;dependencies {&#10;&#9;implementation 'org.springframework.boot:spring-boot-starter-data-jpa'&#10;&#9;implementation 'org.springframework.boot:spring-boot-starter-webmvc'&#10;&#9;compileOnly 'org.projectlombok:lombok'&#10;&#9;developmentOnly 'org.springframework.boot:spring-boot-devtools'&#10;&#9;runtimeOnly 'com.mysql:mysql-connector-j'&#10;&#9;annotationProcessor 'org.projectlombok:lombok'&#10;&#9;testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'&#10;&#9;testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'&#10;&#9;testRuntimeOnly 'org.junit.platform:junit-platform-launcher'&#10;&#10;&#9;implementation 'org.springframework.boot:spring-boot-starter-web'&#10;    testImplementation 'org.springframework.boot:spring-boot-starter-test'&#10;    implementation 'org.jsoup:jsoup:1.17.1'&#10;}&#10;&#10;tasks.named('test') {&#10;&#9;useJUnitPlatform()&#10;}" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>
