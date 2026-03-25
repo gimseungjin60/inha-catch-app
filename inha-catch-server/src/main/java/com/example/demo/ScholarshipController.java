@@ -1,12 +1,25 @@
 package com.example.demo;
 
+<<<<<<< HEAD
 import org.springframework.web.bind.annotation.*;
+=======
+import com.example.demo.entity.Scholarship;
+import org.springframework.data.domain.Sort;
+import org.springframework.web.bind.annotation.*;
+
+>>>>>>> feature/B
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/scholarships")
+<<<<<<< HEAD
 @CrossOrigin(origins = "*") 
 public class ScholarshipController {
+=======
+@CrossOrigin(origins = "*")
+public class ScholarshipController {
+
+>>>>>>> feature/B
     private final ScholarshipRepository repository;
 
     public ScholarshipController(ScholarshipRepository repository) {
@@ -15,6 +28,7 @@ public class ScholarshipController {
 
     @GetMapping
     public List<Scholarship> getAll() {
+<<<<<<< HEAD
         return repository.findAll();
     }
     
@@ -26,3 +40,8 @@ public class ScholarshipController {
         return "테스트 데이터 저장 완료!";
     }
 }
+=======
+        return repository.findAll(Sort.by(Sort.Direction.DESC, "articleId"));
+    }
+}
+>>>>>>> feature/B

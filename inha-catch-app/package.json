@@ -11,6 +11,11 @@
   "dependencies": {
     "@react-navigation/native": "^7.1.33",
     "@react-navigation/stack": "^7.8.5",
+<<<<<<< HEAD
+=======
+    "axios": "^1.6.8",
+    "date-fns": "^4.1.0",
+>>>>>>> feature/B
     "expo": "^55.0.7",
     "expo-constants": "~55.0.8",
     "expo-font": "~55.0.4",
@@ -33,6 +38,10 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+<<<<<<< HEAD
+=======
+    "@types/react-native": "^0.72.8",
+>>>>>>> feature/B
     "typescript": "~5.9.2"
   },
   "private": true

@@ -1,8 +1,26 @@
 package com.example.demo;
 
+<<<<<<< HEAD
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public interface ScholarshipRepository extends JpaRepository<Scholarship, Long> {
 }
+=======
+import com.example.demo.entity.Scholarship;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface ScholarshipRepository extends JpaRepository<Scholarship, Long> {
+
+    Optional<Scholarship> findTopBySourceSiteAndBoardIdOrderByArticleIdDesc(String sourceSite, String boardId);
+
+    Optional<Scholarship> findBySourceSiteAndBoardIdAndArticleId(String sourceSite, String boardId, Long articleId);
+
+    boolean existsBySourceSiteAndBoardIdAndArticleId(String sourceSite, String boardId, Long articleId);
+}
+>>>>>>> feature/B
