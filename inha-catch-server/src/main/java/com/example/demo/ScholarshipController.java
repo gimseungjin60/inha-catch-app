@@ -1,5 +1,6 @@
 package com.example.demo;
 
+import com.example.demo.entity.Scholarship;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
