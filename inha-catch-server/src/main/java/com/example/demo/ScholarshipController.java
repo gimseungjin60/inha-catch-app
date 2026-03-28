@@ -34,6 +34,6 @@ public class ScholarshipController {
             @RequestParam(defaultValue = "20") int size
     ) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "articleId"));
-        return repository.findByTitleContainingOrContentContainingOrSummaryContaining(keyword, keyword, keyword, pageable);
+        return repository.findByTitleContainingOrContentContainingOrBasicSummaryContainingOrDetailSummaryContaining(keyword, keyword, keyword, keyword, pageable);
     }
 }

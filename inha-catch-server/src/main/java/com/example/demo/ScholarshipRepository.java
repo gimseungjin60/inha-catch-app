@@ -15,5 +15,5 @@ public interface ScholarshipRepository extends JpaRepository<Scholarship, Long> 
 
     boolean existsBySourceSiteAndBoardIdAndArticleId(String sourceSite, String boardId, Long articleId);
 
-    org.springframework.data.domain.Page<Scholarship> findByTitleContainingOrContentContainingOrSummaryContaining(String title, String content, String summary, org.springframework.data.domain.Pageable pageable);
+    org.springframework.data.domain.Page<Scholarship> findByTitleContainingOrContentContainingOrBasicSummaryContainingOrDetailSummaryContaining(String title, String content, String basicSummary, String detailSummary, org.springframework.data.domain.Pageable pageable);
 }

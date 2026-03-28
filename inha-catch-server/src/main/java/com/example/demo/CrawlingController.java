@@ -29,4 +29,14 @@ public class CrawlingController {
     public String crawlAndSave() throws Exception {
         return crawlService.crawlAndSaveIncremental();
     }
+
+    @GetMapping("/backfill")
+    public String backfillSummaries() {
+        return crawlService.backfillSummaries();
+    }
+
+    @GetMapping("/clear")
+    public String clearDatabase() {
+        return crawlService.clearDatabase();
+    }
 }
