@@ -41,6 +41,7 @@ public class InhatcCrawler {
             }
 
             int added = 0;
+            boolean stopCrawling = false;
             for (Element row : rows) {
                 Element titleElement = row.selectFirst("td:nth-child(2) a");
                 if (titleElement == null) {
@@ -55,10 +56,17 @@ public class InhatcCrawler {
 
                 Long articleId = extractArticleId(link);
                 String numberText = textOrEmpty(row.selectFirst("td:nth-child(1)"));
-                boolean isNotice = numberText.contains("공지");
+                boolean isNotice = row.hasClass("notice") || numberText.contains("공지");
 
                 String author = textOrEmpty(row.selectFirst("td:nth-child(4)"));
                 LocalDate postedAt = parseDate(textOrEmpty(row.selectFirst("td:nth-child(5)")));
+                
+                if (postedAt != null && postedAt.getYear() <= 2025 && !isNotice) {
+                    System.out.println("2025년도 이전 데이터 발견. 크롤링을 종료합니다.");
+                    stopCrawling = true;
+                    break;
+                }
+                
                 Integer viewCount = parseInt(textOrEmpty(row.selectFirst("td:nth-child(6)")));
                 boolean hasAttachment = row.select("td:nth-child(3) img, td:nth-child(3) a, td:nth-child(3) i").size() > 0;
 
@@ -74,7 +82,7 @@ public class InhatcCrawler {
                 added++;
             }
 
-            if (added == 0 || page >= 200) {
+            if (stopCrawling || added == 0 || page >= 200) {
                 break;
             }
             page++;
@@ -113,7 +121,10 @@ public class InhatcCrawler {
             return;
         }
 
-        String textContent = contentElement.text().trim();
+        // 본문 내 줄바꿈, 문단 유지
+        contentElement.select("br").append("\\n");
+        contentElement.select("p").prepend("\\n\\n");
+        String textContent = contentElement.text().replace("\\n", "\n").replaceAll("(?m)^[ \t]*\r?\n", "").trim();
 
         // 본문 내 이미지 URL 수집 (lazy-load 대응)
         List<String> imageUrls = new ArrayList<>();

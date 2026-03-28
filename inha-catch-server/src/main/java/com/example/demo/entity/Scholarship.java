@@ -66,8 +66,12 @@ public class Scholarship {
     private String content;
 
     @Lob
-    @Column(name = "summary", columnDefinition = "LONGTEXT")
-    private String summary;
+    @Column(name = "basic_summary", columnDefinition = "LONGTEXT")
+    private String basicSummary;
+
+    @Lob
+    @Column(name = "detail_summary", columnDefinition = "LONGTEXT")
+    private String detailSummary;
 
     @Lob
     @Column(name = "apply_period", columnDefinition = "LONGTEXT")

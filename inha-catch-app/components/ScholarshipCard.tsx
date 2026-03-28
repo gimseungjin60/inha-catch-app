@@ -13,7 +13,7 @@ export interface Scholarship {
   title: string;
   aiSummary: string[];
   tags: string[];
-  dDay: number;
+  dDay: string;
 }
 
 export default function ScholarshipCard({ item }: { item: Scholarship }) {
@@ -86,7 +86,7 @@ export default function ScholarshipCard({ item }: { item: Scholarship }) {
              </View>
              
              <View style={[styles.ddayBadge, { borderColor: colors.primary }]}>
-                <Text style={[styles.ddayText, { color: colors.primary }]}>D-{item.dDay}</Text>
+                <Text style={[styles.ddayText, { color: colors.primary }]}>{item.dDay}</Text>
              </View>
           </View>
       </View>

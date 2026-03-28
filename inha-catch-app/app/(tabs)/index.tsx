@@ -44,17 +44,26 @@ export default function HomeScreen() {
             }
           }
 
-          return {
-            id: d.id, // Primary key
-            type: d.title.includes('공모전') ? 'contest' : 'scholarship',
-            isRecommended: recommended,
-            title: d.title,
-            aiSummary: [
+            let parsedAiSummary = [
               d.eligibility || '자격 조건은 상세 요강 참조',
               d.amountInfo || '지원 내역은 상세 요강 참조',
               d.applyPeriod || '모집 기한은 상세 요강 참조'
-            ],
-            tags: tags.length ? tags : ['#인하대'],
+            ];
+            
+            if (d.basicSummary) {
+              const bullets = d.basicSummary.split('\n').filter((s: string) => s.trim().startsWith('•')).map((s: string) => s.replace('•', '').trim());
+              if (bullets.length > 0) {
+                parsedAiSummary = bullets;
+              }
+            }
+
+            return {
+              id: d.id, // Primary key
+              type: d.title.includes('공모전') ? 'contest' : 'scholarship',
+              isRecommended: recommended,
+              title: d.title,
+              aiSummary: parsedAiSummary,
+              tags: tags.length ? tags : ['#인하대'],
             dDay: d.dDay || '상시', // Added backend calculated D-Day
           };
         });

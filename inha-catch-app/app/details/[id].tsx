@@ -7,13 +7,15 @@ import { Calendar, Info, ChevronLeft, Bookmark } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useBookmarks } from '@/context/BookmarkContext';
+import Markdown from 'react-native-markdown-display';
 
 // 타입 정의
 interface Scholarship {
   id: number;
   title: string;
   category: string;
-  summary: string;
+  basicSummary?: string;
+  detailSummary?: string;
   dDay: string;
   isRecommended: boolean;
   author?: string;
@@ -100,7 +102,18 @@ export default function DetailScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text || '#1e293b' }]}>💡 모집 요약 (AI)</Text>
           </View>
           <View style={[styles.summaryBox, { backgroundColor: colors.aiBoxBackground || '#eff6ff', borderLeftColor: colors.primary || '#2563eb' }]}>
-            <Text style={[styles.summaryText, { color: colors.primary || '#1e40af' }]}>{detail.summary || 'AI 요약 정보가 없습니다.'}</Text>
+            {detail.detailSummary ? (
+              <Markdown 
+                style={{ 
+                  body: { ...styles.summaryText, color: colors.primary || '#1e40af' },
+                  bullet_list: { marginTop: 0, marginBottom: 0 }
+                }}
+              >
+                {detail.detailSummary}
+              </Markdown>
+            ) : (
+              <Text style={[styles.summaryText, { color: colors.primary || '#1e40af' }]}>AI 요약 정보가 없습니다.</Text>
+            )}
           </View>
         </View>
         
@@ -223,7 +236,8 @@ const styles = StyleSheet.create({
   },
   fullContent: {
     fontSize: 15,
-    lineHeight: 24,
+    lineHeight: 26,
+    letterSpacing: 0.3,
   },
   applyButton: {
     paddingVertical: 16,
