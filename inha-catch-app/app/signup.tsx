@@ -6,6 +6,7 @@ import Colors from '@/constants/Colors';
 import axios from 'axios';
 import { useColorScheme } from '@/components/useColorScheme';
 import { UserPlus, BookOpen, Tag, Mail, Lock, ChevronLeft } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -33,7 +34,7 @@ export default function SignupScreen() {
 
   const handleComplete = async () => {
     if (!email.trim() || !password.trim() || !name.trim() || !major.trim()) {
-      Alert.alert('알림', '모든 필수 항목(이메일, 비밀번호, 이름, 전공)을 입력해주세요.');
+      Platform.OS === 'web' ? window.alert('모든 필수 항목(이메일, 비밀번호, 이름, 전공)을 입력해주세요.') : Alert.alert('알림', '모든 필수 항목(이메일, 비밀번호, 이름, 전공)을 입력해주세요.');
       return;
     }
     
@@ -47,17 +48,20 @@ export default function SignupScreen() {
         keywords: keywords.join(','),
       });
 
+      await AsyncStorage.setItem('@jwt_token', res.data.token);
+      await AsyncStorage.setItem('@refresh_token', res.data.refreshToken);
       await updateProfile({
-        name: res.data.name,
-        major: res.data.major || '',
+        name: res.data.user.name,
+        major: res.data.user.major || '',
         grade: '',
-        keywords: res.data.keywords ? res.data.keywords.split(',').filter(Boolean) : [],
+        keywords: res.data.user.keywords ? res.data.user.keywords.split(',').filter(Boolean) : [],
         isLoggedIn: true
       });
       
       router.replace('/(tabs)');
     } catch (err: any) {
-      Alert.alert('회원가입 실패', err.response?.data?.message || '네트워크 오류가 발생했습니다.');
+      const msg = err.response?.data?.message || '네트워크 오류가 발생했습니다.';
+      Platform.OS === 'web' ? window.alert(msg) : Alert.alert('회원가입 실패', msg);
     }
   };
 

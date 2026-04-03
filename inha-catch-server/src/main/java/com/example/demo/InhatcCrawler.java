@@ -22,13 +22,13 @@ public class InhatcCrawler {
     private static final Pattern ELIGIBILITY_PATTERN = Pattern.compile("(지원\\s*대상[:：]?\\s*[^\\n]+)");
     private static final Pattern AMOUNT_PATTERN = Pattern.compile("(장학\\s*금액[:：]?\\s*[^\\n]+)");
 
-    public List<ScholarshipDto> crawlAllPages() throws Exception {
+    public List<ScholarshipDto> crawlAllPages(String boardId) throws Exception {
         List<ScholarshipDto> result = new ArrayList<>();
         Set<String> visitedLinks = new HashSet<>();
 
         int page = 1;
         while (true) {
-            String url = "https://www.inhatc.ac.kr/bbs/kr/17/artclList.do?page=" + page;
+            String url = "https://www.inhatc.ac.kr/bbs/kr/" + boardId + "/artclList.do?page=" + page;
             Document doc = Jsoup.connect(url)
                     .userAgent("Mozilla/5.0")
                     .referrer("https://www.google.com")
@@ -61,10 +61,15 @@ public class InhatcCrawler {
                 String author = textOrEmpty(row.selectFirst("td:nth-child(4)"));
                 LocalDate postedAt = parseDate(textOrEmpty(row.selectFirst("td:nth-child(5)")));
                 
-                if (postedAt != null && postedAt.getYear() <= 2025 && !isNotice) {
-                    System.out.println("2025년도 이전 데이터 발견. 크롤링을 종료합니다.");
-                    stopCrawling = true;
-                    break;
+                if (postedAt != null && postedAt.getYear() < 2025) {
+                    if (!isNotice) {
+                        System.out.println("2024년도 이하 일반 데이터 발견. 크롤링을 종료합니다.");
+                        stopCrawling = true;
+                        break;
+                    } else {
+                        System.out.println("2024년도 이하 공지사항 발견. 스킵합니다.");
+                        continue;
+                    }
                 }
                 
                 Integer viewCount = parseInt(textOrEmpty(row.selectFirst("td:nth-child(6)")));
@@ -213,9 +218,15 @@ public class InhatcCrawler {
     }
 
     private LocalDate parseDate(String value) {
+        if (value == null || value.trim().isEmpty()) return null;
         try {
-            return LocalDate.parse(value, DATE_FORMAT);
+            String clean = value.replace("-", ".").replace("/", ".").trim();
+            if (clean.matches("^\\d{2}\\.\\d{2}\\.\\d{2}$")) {
+                clean = "20" + clean;
+            }
+            return LocalDate.parse(clean, DateTimeFormatter.ofPattern("yyyy.MM.dd"));
         } catch (Exception ignored) {
+            System.out.println("날짜 파싱 실패: " + value);
             return null;
         }
     }

@@ -12,40 +12,29 @@ import java.util.Map;
 @Service
 public class GeminiService {
 
-    public static final String PROMPT_BASIC = 
-        "당신은 인하공전 학생들을 위한 공지사항 요약 전문가, 'Inha-Catch AI'입니다. 복잡한 장학금, 공모전, 학사 공지 글을 분석하여 학생들이 스크롤하면서 당장 알아야 할 핵심 정보만 추출해 짧고 친절하게 요약하는 역할을 맡고 있습니다.\n" +
-        "\n" +
-        "[Guidelines]\n" +
-        "1. 불릿 포인트(•)를 사용하여 한눈에 들어오게 하세요. 3~4줄 내외가 적당합니다.\n" +
-        "2. '지원 대상(학년/학과/성적)', '주요 혜택(금액/상금)', '신청 기간' 등 학생들이 궁금해하는 정보만 담으세요.\n" +
-        "3. '~해요', '~입니다'와 같은 정중하고 친절한 어조를 사용하세요.\n" +
-        "\n" +
-        "[Output Format] (이 형식을 엄격히 따를 것)\n" +
-        "• [지원 대상 및 자격 한 줄 요약]\n" +
-        "• [주요 혜택 및 금액 한 줄 요약]\n" +
-        "• [신청 기간 및 방법 한 줄 요약]\n\n";
-
-    public static final String PROMPT_DETAIL = 
-        "당신은 인하공전 학생들이 복잡한 학사/장학 공지사항을 단 10초 만에 파악할 수 있도록 돕는 'Inha-Catch 핵심 정보 분석기'입니다. 필수 정보만 추출하여 직관적으로 정리하는 역할을 맡고 있습니다.\n" +
-        "\n" +
-        "[Guidelines]\n" +
-        "1. 긴 문장으로 요약하지 마세요. 불릿 포인트(•)를 적극 활용하세요.\n" +
-        "2. '신청 기간(시간 포함)', '지원 대상(상세 기준)', '필수 서류/행동'을 구획을 나누어 보여주세요.\n" +
-        "3. 복잡한 공문을 알기 쉬운 용어로 바꾸세요.\n" +
-        "\n" +
-        "[Output Format] (이 형식을 엄격히 따를 것)\n" +
-        "🎯 **핵심 요약**\n" +
-        "• [지원 대상 및 자격 요약]\n" +
-        "• [주요 혜택 및 금액 요약]\n" +
-        "\n" +
-        "📅 **일정 및 방법**\n" +
-        "• ⏱️ **신청 기간:** [YYYY.MM.DD HH:mm] ~ [YYYY.MM.DD HH:mm]까지\n" +
-        "• ⚠️ **필수 행동:** [가구원 동의/서류 제출 등 기한 내 완료]\n" +
-        "• 💻 **신청 방법:** [홈페이지 또는 모바일 앱 신청]\n" +
-        "\n" +
-        "🎓 **지원 자격 (상세)**\n" +
-        "• **대상:** [학년/학과/소득분위 등 상세]\n" +
-        "• **성적:** [직전학기 성적 기준]\n\n";
+    public static final String PROMPT_UNIFIED = 
+        "[역할 부여]\n" +
+        "너는 인하공전 학생들을 위한 '인하캐치' 서비스의 데이터 관리자야. 크롤링된 공고문을 분석하여 신규 등록, 기존 데이터 수정, 혹은 불필요한 정보 생략을 결정하고 정제하는 역할을 수행해.\n\n" +
+        "[데이터 처리 및 필터링 규칙]\n" +
+        "1. 날짜 필터링: 공고일 또는 시행 연도가 **2025년 이전(2024년 및 그 이전)**인 데이터는 분석하지 말고 **\"SKIP_OLD\"**라고만 응답해.\n" +
+        "2. 중복 및 수정 판단:\n" +
+        " - 만약 제공된 텍스트가 이전에 분석했던 내용과 동일하거나, 단순 공지(시험 일정 안내 등)라면 **\"SKIP_DUP\"**이라고 응답해.\n" +
+        " - 기존 공고의 내용 중 '접수 기간 연장', '지원 자격 변경' 등 중요한 수정사항이 발견되면 기존 내용을 바탕으로 [수정사항 반영] 항목을 추가하여 재작성해.\n" +
+        "3. 정보 생략: 인사말, 단순 절차 설명, 반복되는 유의사항 등 학생들에게 불필요한 사족은 모두 생략하고 '핵심 가치' 위주로만 남겨.\n\n" +
+        "[응답 양식 (이 구조를 엄격히 따를 것)]\n" +
+        "상태: (NEW / UPDATE / SKIP_OLD / SKIP_DUP 중 하나)\n" +
+        "제목: \n" +
+        "지원 대상: \n" +
+        "신청 기간: \n" +
+        "핵심 혜택: \n" +
+        "변경 내용: \n" +
+        "상세 요약: \n" +
+        "태그: \n\n" +
+        "[주의 사항]\n" +
+        "- 2025년/2026년 최신 데이터가 아니면 절대 요약하지 마.\n" +
+        "- 이미 알고 있는 뻔한 내용(예: 매달 반복되는 일반 공지)은 SKIP_DUP 처리해.\n" +
+        "- 무료 API 한도를 아끼기 위해 불필요한 텍스트는 90% 이상 쳐내고 알맹이만 남겨.\n\n" +
+        "분석할 공고문 텍스트:\n";
 
     @Value("${gemini.api.key}")
     private String apiKey;
@@ -80,22 +69,34 @@ public class GeminiService {
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-        try {
-            ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
-            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                List<Map<String, Object>> candidates = (List<Map<String, Object>>) response.getBody().get("candidates");
-                if (candidates != null && !candidates.isEmpty()) {
-                    Map<String, Object> contentResp = (Map<String, Object>) candidates.get(0).get("content");
-                    List<Map<String, Object>> partsResp = (List<Map<String, Object>>) contentResp.get("parts");
-                    if (partsResp != null && !partsResp.isEmpty()) {
-                        return (String) partsResp.get(0).get("text");
+        int retries = 0;
+        int maxRetries = 2;
+        while (retries < maxRetries) {
+            try {
+                ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
+                if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                    List<Map<String, Object>> candidates = (List<Map<String, Object>>) response.getBody().get("candidates");
+                    if (candidates != null && !candidates.isEmpty()) {
+                        Map<String, Object> contentResp = (Map<String, Object>) candidates.get(0).get("content");
+                        List<Map<String, Object>> partsResp = (List<Map<String, Object>>) contentResp.get("parts");
+                        if (partsResp != null && !partsResp.isEmpty()) {
+                            return (String) partsResp.get(0).get("text");
+                        }
                     }
                 }
+                break;
+            } catch (Exception e) {
+                String errMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+                if (errMsg.contains("429") || errMsg.contains("exhausted") || errMsg.contains("too many requests")) {
+                    System.out.println("[Gemini API] 한도 초과(429) 감지. 60초 대기 후 재시도합니다... (시도 " + (retries + 1) + ")");
+                    try { Thread.sleep(60000); } catch (InterruptedException ie) {}
+                    retries++;
+                } else {
+                    System.err.println("Gemini API 호출 중 오류 발생: " + e.getMessage());
+                    e.printStackTrace();
+                    return "AI 요약 생성 중 오류가 발생했습니다.";
+                }
             }
-        } catch (Exception e) {
-            System.err.println("Gemini API 호출 중 오류 발생: " + e.getMessage());
-            e.printStackTrace();
-            return "AI 요약 생성 중 오류가 발생했습니다.";
         }
         
         return "AI 요약을 생성하지 못했습니다.";
