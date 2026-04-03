@@ -89,6 +89,9 @@ public class Scholarship {
     @Column(name = "related_links", columnDefinition = "LONGTEXT")
     private String relatedLinks;
 
+    @Column(name = "content_hash", length = 64)
+    private String contentHash;
+
     @CreationTimestamp
     @Column(name = "crawled_at", nullable = false, updatable = false)
     private LocalDateTime crawledAt;

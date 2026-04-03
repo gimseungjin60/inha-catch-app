@@ -12,6 +12,8 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 public class ScholarshipDto {
+    private String sourceSite;
+    private String boardId;
     private Long articleId;
     private String title;
     private String link;

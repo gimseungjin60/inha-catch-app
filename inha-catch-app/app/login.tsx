@@ -6,6 +6,7 @@ import Colors from '@/constants/Colors';
 import axios from 'axios';
 import { useColorScheme } from '@/components/useColorScheme';
 import { Mail, Lock, ChevronLeft } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('로그인 실패', '이메일과 비밀번호를 입력해주세요.');
+      Platform.OS === 'web' ? window.alert('이메일과 비밀번호를 입력해주세요.') : Alert.alert('로그인 실패', '이메일과 비밀번호를 입력해주세요.');
       return;
     }
     
@@ -29,18 +30,21 @@ export default function LoginScreen() {
         password: password.trim(),
       });
 
+      await AsyncStorage.setItem('@jwt_token', res.data.token);
+      await AsyncStorage.setItem('@refresh_token', res.data.refreshToken);
       await updateProfile({
         ...profile, // Keep existing offline profile if any
-        name: res.data.name,
-        major: res.data.major || '',
+        name: res.data.user.name,
+        major: res.data.user.major || '',
         grade: '',
-        keywords: res.data.keywords ? res.data.keywords.split(',').filter(Boolean) : [],
+        keywords: res.data.user.keywords ? res.data.user.keywords.split(',').filter(Boolean) : [],
         isLoggedIn: true
       });
       
       router.replace('/(tabs)');
     } catch (err: any) {
-      Alert.alert('로그인 실패', err.response?.data?.message || '이메일 혹은 비밀번호를 확인해주세요.');
+      const msg = err.response?.data?.message || '이메일 혹은 비밀번호를 확인해주세요.';
+      Platform.OS === 'web' ? window.alert(msg) : Alert.alert('로그인 실패', msg);
     }
   };
 

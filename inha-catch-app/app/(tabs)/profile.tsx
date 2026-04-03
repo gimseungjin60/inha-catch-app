@@ -6,6 +6,8 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { useUser } from '@/context/UserContext';
 import { UserCircle, Tag, BookOpen } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import api from '@/api/axios';
 
 export default function ProfileScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -37,22 +39,48 @@ export default function ProfileScreen() {
   };
 
   const handleSave = async () => {
-    await updateProfile({ ...profile, name, major, keywords });
-    Alert.alert('저장 완료', '내 정보가 업데이트 되었습니다!');
+    try {
+      if (profile.isLoggedIn) {
+        await api.put('/api/user/profile', { name, major, keywords: keywords.join(',') });
+      }
+      await updateProfile({ ...profile, name, major, keywords });
+      Platform.OS === 'web' ? window.alert('내 정보가 업데이트 되었습니다!') : Alert.alert('저장 완료', '내 정보가 업데이트 되었습니다!');
+    } catch (err) {
+      console.error(err);
+      Platform.OS === 'web' ? window.alert('서버 동기화 중 오류가 발생했습니다.') : Alert.alert('저장 실패', '서버 동기화 중 오류가 발생했습니다.');
+    }
+  };
+
+  const executeLogout = async () => {
+    try {
+      if (profile.isLoggedIn) {
+        await api.post('/api/auth/logout');
+      }
+    } catch (err) {
+      console.log('로그아웃 서버 처리 오류 무시', err);
+    }
+    await AsyncStorage.removeItem('@jwt_token');
+    await AsyncStorage.removeItem('@refresh_token');
+    await AsyncStorage.removeItem('@user_profile');
+    await updateProfile({ name: '', major: '', grade: '', keywords: [], isLoggedIn: false });
+    router.replace('/login');
   };
 
   const handleLogout = async () => {
-    Alert.alert('로그아웃', '정말 로그아웃 하시겠습니까?', [
-      { text: '취소', style: 'cancel' },
-      { 
-        text: '로그아웃', 
-        style: 'destructive',
-        onPress: async () => {
-          await updateProfile({ ...profile, isLoggedIn: false });
-          router.replace('/');
-        }
+    if (Platform.OS === 'web') {
+      if (window.confirm('정말 로그아웃 하시겠습니까?')) {
+        await executeLogout();
       }
-    ]);
+    } else {
+      Alert.alert('로그아웃', '정말 로그아웃 하시겠습니까?', [
+        { text: '취소', style: 'cancel' },
+        { 
+          text: '로그아웃', 
+          style: 'destructive',
+          onPress: executeLogout
+        }
+      ]);
+    }
   };
 
   return (
