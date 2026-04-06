@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, SafeAreaView, Platform, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, SafeAreaView, Platform, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 import Colors from '@/constants/Colors';
-import axios from 'axios';
+import api from '@/api/axios';
 import { useColorScheme } from '@/components/useColorScheme';
 import { UserPlus, BookOpen, Tag, Mail, Lock, ChevronLeft } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const showAlert = (title: string, msg: string) => {
+  Platform.OS === 'web' ? window.alert(msg) : Alert.alert(title, msg);
+};
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -32,15 +36,26 @@ export default function SignupScreen() {
     setKeywords(keywords.filter(item => item !== k));
   };
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleComplete = async () => {
     if (!email.trim() || !password.trim() || !name.trim() || !major.trim()) {
-      Platform.OS === 'web' ? window.alert('모든 필수 항목(이메일, 비밀번호, 이름, 전공)을 입력해주세요.') : Alert.alert('알림', '모든 필수 항목(이메일, 비밀번호, 이름, 전공)을 입력해주세요.');
+      showAlert('알림', '모든 필수 항목(이메일, 비밀번호, 이름, 전공)을 입력해주세요.');
       return;
     }
-    
+    const emailRegex = /^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$/;
+    if (!emailRegex.test(email.trim())) {
+      showAlert('알림', '올바른 이메일 형식을 입력해주세요.');
+      return;
+    }
+    if (password.length < 4) {
+      showAlert('알림', '비밀번호는 4자 이상이어야 합니다.');
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      const apiUrl = Platform.OS === 'android' ? 'http://10.0.2.2:8080' : 'http://localhost:8080';
-      const res = await axios.post(`${apiUrl}/api/auth/signup`, {
+      const res = await api.post('/api/auth/signup', {
         email: email.trim(),
         password: password.trim(),
         name: name.trim(),
@@ -55,13 +70,16 @@ export default function SignupScreen() {
         major: res.data.user.major || '',
         grade: '',
         keywords: res.data.user.keywords ? res.data.user.keywords.split(',').filter(Boolean) : [],
-        isLoggedIn: true
+        isLoggedIn: true,
+        role: res.data.user.role || 'USER',
       });
-      
+
       router.replace('/(tabs)');
     } catch (err: any) {
       const msg = err.response?.data?.message || '네트워크 오류가 발생했습니다.';
-      Platform.OS === 'web' ? window.alert(msg) : Alert.alert('회원가입 실패', msg);
+      showAlert('회원가입 실패', msg);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -170,8 +188,16 @@ export default function SignupScreen() {
           </View>
         </View>
 
-        <Pressable onPress={handleComplete} style={[styles.submitBtn, { backgroundColor: colors.primary }]}>
-          <Text style={styles.submitText}>인하캐치 시작하기</Text>
+        <Pressable
+          onPress={handleComplete}
+          style={[styles.submitBtn, { backgroundColor: colors.primary, opacity: isSubmitting ? 0.6 : 1 }]}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={styles.submitText}>인하캐치 시작하기</Text>
+          )}
         </Pressable>
       </ScrollView>
     </SafeAreaView>

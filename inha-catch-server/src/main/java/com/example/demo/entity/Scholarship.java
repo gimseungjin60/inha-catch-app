@@ -43,6 +43,9 @@ public class Scholarship {
     @Column(name = "title", nullable = false, length = 1000)
     private String title;
 
+    @Column(name = "category", length = 30)
+    private String category; // SCHOLARSHIP, CONTEST, NOTICE
+
     @Column(name = "post_url", nullable = false, length = 2000)
     private String postUrl;
 

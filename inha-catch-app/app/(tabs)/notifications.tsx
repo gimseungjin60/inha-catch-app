@@ -1,12 +1,29 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, SafeAreaView, ActivityIndicator, Platform, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { StyleSheet, View, Text, ScrollView, SafeAreaView, ActivityIndicator, Platform, TouchableOpacity, Pressable, RefreshControl } from 'react-native';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { Bell, Sparkles, CalendarClock, Award } from 'lucide-react-native';
+import { Bell, Sparkles, CalendarClock, Award, RefreshCw } from 'lucide-react-native';
 import { useBookmarks } from '@/context/BookmarkContext';
 import { useRouter } from 'expo-router';
-import axios from 'axios';
+import api from '@/api/axios';
 import { Scholarship } from '@/components/ScholarshipCard';
+
+const getTimeAgo = (dateStr?: string): string => {
+  if (!dateStr) return '';
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return '오늘';
+    if (diffDays === 1) return '어제';
+    if (diffDays < 7) return `${diffDays}일 전`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)}주 전`;
+    return `${Math.floor(diffDays / 30)}개월 전`;
+  } catch {
+    return '';
+  }
+};
 
 type AppNotification = {
   id: string;
@@ -25,20 +42,21 @@ export default function NotificationsScreen() {
   const { bookmarkedIds } = useBookmarks();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const apiUrl = Platform.OS === 'android' ? 'http://10.0.2.2:8080' : 'http://localhost:8080';
-    axios.get(`${apiUrl}/api/scholarships?size=200`)
+  const fetchNotifications = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    api.get('/api/scholarships?size=200')
       .then(res => {
         const rawData = res.data.content || res.data;
-        const mapped: Scholarship[] = rawData.map((d: any) => ({
+        const mapped = rawData.map((d: any) => ({
           id: d.id,
           type: d.title.includes('공모전') ? 'contest' : 'scholarship',
-          isRecommended: d.viewCount && d.viewCount > 100,
           title: d.title,
-          aiSummary: [],
-          tags: [],
           dDay: d.dDay || '상시',
+          postedAt: d.postedAt || null,
         }));
 
         let newNotis: AppNotification[] = [];
@@ -55,7 +73,7 @@ export default function NotificationsScreen() {
                 type: 'deadline',
                 title: '마감 임박',
                 message: `[${item.title}] 지원 마감이 ${num === 0 ? '오늘입니다!' : num + '일 남았습니다.'}`,
-                timeStr: '방금 전'
+                timeStr: num === 0 ? '오늘 마감' : `D-${num}`
               });
             }
           }
@@ -70,15 +88,22 @@ export default function NotificationsScreen() {
             type: 'new',
             title: '신규 공고',
             message: `새로운 ${item.type === 'scholarship' ? '장학금' : '공모전'}이 등록되었습니다: [${item.title}]`,
-            timeStr: '오늘'
+            timeStr: getTimeAgo(item.postedAt)
           });
         });
 
         setNotifications(newNotis);
       })
-      .catch(err => console.error(err))
-      .finally(() => setLoading(false));
+      .catch(err => {
+        console.error(err);
+        setError('알림을 불러오지 못했습니다.');
+      })
+      .finally(() => { setLoading(false); setRefreshing(false); });
   }, [bookmarkedIds]);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.screenBackground }]}>
@@ -100,8 +125,19 @@ export default function NotificationsScreen() {
 
       {loading ? (
         <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+      ) : error ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: colors.textSecondary, fontSize: 15, marginBottom: 16 }}>{error}</Text>
+          <Pressable onPress={fetchNotifications} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 }}>
+            <RefreshCw size={16} color="#FFF" />
+            <Text style={{ color: '#FFF', fontWeight: 'bold', marginLeft: 6 }}>다시 시도</Text>
+          </Pressable>
+        </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.contentContainer}>
+        <ScrollView
+          contentContainerStyle={styles.contentContainer}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchNotifications(); }} colors={['#2962FF']} />}
+        >
           <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 16 }]}>전체 알림</Text>
 
           {notifications.length === 0 ? (

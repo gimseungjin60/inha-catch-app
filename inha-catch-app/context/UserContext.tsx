@@ -7,6 +7,7 @@ type UserProfile = {
   grade: string;
   keywords: string[];
   isLoggedIn: boolean;
+  role?: string;
 };
 
 type UserContextType = {

@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, SafeAreaView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, SafeAreaView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 import Colors from '@/constants/Colors';
-import axios from 'axios';
+import api from '@/api/axios';
 import { useColorScheme } from '@/components/useColorScheme';
 import { Mail, Lock, ChevronLeft } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const showAlert = (title: string, msg: string) => {
+  Platform.OS === 'web' ? window.alert(msg) : Alert.alert(title, msg);
+};
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -16,16 +20,20 @@ export default function LoginScreen() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Platform.OS === 'web' ? window.alert('이메일과 비밀번호를 입력해주세요.') : Alert.alert('로그인 실패', '이메일과 비밀번호를 입력해주세요.');
+      showAlert('로그인 실패', '이메일과 비밀번호를 입력해주세요.');
       return;
     }
-    
+
+    setIsSubmitting(true);
     try {
-      const apiUrl = Platform.OS === 'android' ? 'http://10.0.2.2:8080' : 'http://localhost:8080';
-      const res = await axios.post(`${apiUrl}/api/auth/login`, {
+      const res = await api.post('/api/auth/login', {
         email: email.trim(),
         password: password.trim(),
       });
@@ -33,18 +41,45 @@ export default function LoginScreen() {
       await AsyncStorage.setItem('@jwt_token', res.data.token);
       await AsyncStorage.setItem('@refresh_token', res.data.refreshToken);
       await updateProfile({
-        ...profile, // Keep existing offline profile if any
+        ...profile,
         name: res.data.user.name,
         major: res.data.user.major || '',
         grade: '',
         keywords: res.data.user.keywords ? res.data.user.keywords.split(',').filter(Boolean) : [],
-        isLoggedIn: true
+        isLoggedIn: true,
+        role: res.data.user.role || 'USER',
       });
-      
+
       router.replace('/(tabs)');
     } catch (err: any) {
       const msg = err.response?.data?.message || '이메일 혹은 비밀번호를 확인해주세요.';
-      Platform.OS === 'web' ? window.alert(msg) : Alert.alert('로그인 실패', msg);
+      showAlert('로그인 실패', msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetEmail.trim()) {
+      showAlert('알림', '이메일을 입력해주세요.');
+      return;
+    }
+    setIsResetting(true);
+    try {
+      const res = await api.post('/api/auth/reset-password', { email: resetEmail.trim() });
+      const tempPw = res.data.tempPassword;
+      if (tempPw) {
+        showAlert('임시 비밀번호 발급', `임시 비밀번호: ${tempPw}\n\n로그인 후 반드시 비밀번호를 변경해주세요.`);
+      } else {
+        showAlert('완료', res.data.message || '처리되었습니다.');
+      }
+      setShowResetModal(false);
+      setResetEmail('');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || '비밀번호 초기화에 실패했습니다.';
+      showAlert('실패', msg);
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -87,15 +122,20 @@ export default function LoginScreen() {
               />
             </View>
 
-            <Pressable style={styles.forgotBtn}>
+            <Pressable style={styles.forgotBtn} onPress={() => { setResetEmail(email); setShowResetModal(true); }}>
               <Text style={[styles.forgotText, { color: colors.primary }]}>비밀번호를 잊으셨나요?</Text>
             </Pressable>
 
-            <Pressable 
-              style={[styles.loginBtn, { backgroundColor: colors.primary }]}
+            <Pressable
+              style={[styles.loginBtn, { backgroundColor: colors.primary, opacity: isSubmitting ? 0.6 : 1 }]}
               onPress={handleLogin}
+              disabled={isSubmitting}
             >
-              <Text style={styles.loginBtnText}>로그인</Text>
+              {isSubmitting ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text style={styles.loginBtnText}>로그인</Text>
+              )}
             </Pressable>
 
             <View style={styles.footerRow}>
@@ -107,6 +147,40 @@ export default function LoginScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* 비밀번호 찾기 모달 */}
+      <Modal visible={showResetModal} transparent animationType="fade">
+        <Pressable style={styles.modalOverlay} onPress={() => setShowResetModal(false)}>
+          <Pressable style={[styles.modalContent, { backgroundColor: colors.cardBackground }]} onPress={e => e.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>비밀번호 찾기</Text>
+            <Text style={[styles.modalDesc, { color: colors.textSecondary }]}>
+              가입한 이메일을 입력하면 임시 비밀번호가 발급됩니다.
+            </Text>
+            <View style={[styles.inputContainer, { backgroundColor: colors.screenBackground, borderColor: colors.border }]}>
+              <Mail size={20} color={colors.textSecondary} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                placeholder="이메일 입력"
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={resetEmail}
+                onChangeText={setResetEmail}
+              />
+            </View>
+            <Pressable
+              style={[styles.loginBtn, { backgroundColor: colors.primary, opacity: isResetting ? 0.6 : 1, marginBottom: 12 }]}
+              onPress={handleResetPassword}
+              disabled={isResetting}
+            >
+              {isResetting ? <ActivityIndicator color="white" /> : <Text style={styles.loginBtnText}>임시 비밀번호 발급</Text>}
+            </Pressable>
+            <Pressable onPress={() => setShowResetModal(false)}>
+              <Text style={{ color: colors.textSecondary, textAlign: 'center', fontSize: 15 }}>취소</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -146,5 +220,9 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   loginBtnText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-  footerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }
+  footerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalContent: { width: '100%', borderRadius: 20, padding: 24 },
+  modalTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 8 },
+  modalDesc: { fontSize: 14, lineHeight: 20, marginBottom: 20 },
 });

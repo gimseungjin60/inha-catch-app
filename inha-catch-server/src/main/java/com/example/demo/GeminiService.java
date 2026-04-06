@@ -1,5 +1,7 @@
 package com.example.demo;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -11,6 +13,8 @@ import java.util.Map;
 
 @Service
 public class GeminiService {
+
+    private static final Logger log = LoggerFactory.getLogger(GeminiService.class);
 
     public static final String PROMPT_UNIFIED = 
         "[역할 부여]\n" +
@@ -88,12 +92,11 @@ public class GeminiService {
             } catch (Exception e) {
                 String errMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
                 if (errMsg.contains("429") || errMsg.contains("exhausted") || errMsg.contains("too many requests")) {
-                    System.out.println("[Gemini API] 한도 초과(429) 감지. 60초 대기 후 재시도합니다... (시도 " + (retries + 1) + ")");
-                    try { Thread.sleep(60000); } catch (InterruptedException ie) {}
+                    log.warn("[Gemini API] 한도 초과(429) 감지. 60초 대기 후 재시도합니다... (시도 {})", retries + 1);
+                    try { Thread.sleep(60000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                     retries++;
                 } else {
-                    System.err.println("Gemini API 호출 중 오류 발생: " + e.getMessage());
-                    e.printStackTrace();
+                    log.error("Gemini API 호출 중 오류 발생: {}", e.getMessage());
                     return "AI 요약 생성 중 오류가 발생했습니다.";
                 }
             }

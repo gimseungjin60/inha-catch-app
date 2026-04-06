@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, FlatList, ActivityIndicator, Platform, Pressable } from 'react-native';
+import { View, Text, StyleSheet, TextInput, FlatList, ActivityIndicator, Platform, Pressable, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Search } from 'lucide-react-native';
-import axios from 'axios';
+import { Search, RefreshCw } from 'lucide-react-native';
+import api from '@/api/axios';
 import ScholarshipCard, { Scholarship } from '@/components/ScholarshipCard';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -16,14 +16,15 @@ export default function SearchScreen() {
   const [results, setResults] = useState<Scholarship[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const performSearch = () => {
     if (!keyword.trim()) return;
     setLoading(true);
     setHasSearched(true);
-    
-    const apiUrl = Platform.OS === 'android' ? 'http://10.0.2.2:8080' : 'http://localhost:8080';
-    axios.get(`${apiUrl}/api/scholarships/search?keyword=${encodeURIComponent(keyword)}&size=100`)
+    setError(null);
+
+    api.get(`/api/scholarships/search?keyword=${encodeURIComponent(keyword)}&size=100`)
       .then(res => {
         const rawData = res.data.content || res.data;
         const mapped: Scholarship[] = rawData.map((d: any) => {
@@ -31,7 +32,7 @@ export default function SearchScreen() {
           if (d.title.includes('공모전')) tags.push('#공모전');
           else tags.push('#장학금');
           if (d.eligibility && d.eligibility.length < 10) tags.push('#' + d.eligibility);
-          
+
           return {
             id: d.id,
             type: d.title.includes('공모전') ? 'contest' : 'scholarship',
@@ -48,19 +49,22 @@ export default function SearchScreen() {
         });
         setResults(mapped);
       })
-      .catch(err => console.error(err))
+      .catch(err => {
+        console.error(err);
+        setError('검색 중 오류가 발생했습니다.');
+      })
       .finally(() => setLoading(false));
   };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.screenBackground, paddingTop: insets.top }]}>
       <View style={[styles.header, { backgroundColor: colors.cardBackground }]}>
-        <View style={styles.searchBar}>
-          <Search size={20} color="#94a3b8" style={styles.searchIcon} />
+        <View style={[styles.searchBar, { backgroundColor: colors.screenBackground }]}>
+          <Search size={20} color={colors.tabIconDefault || '#94a3b8'} style={styles.searchIcon} />
           <TextInput
             style={[styles.input, { color: colors.text }]}
             placeholder="장학금, 공모전 키워드로 검색해보세요."
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={colors.textSecondary}
             value={keyword}
             onChangeText={setKeyword}
             onSubmitEditing={performSearch}
@@ -68,8 +72,8 @@ export default function SearchScreen() {
             autoCorrect={false}
           />
           {keyword.length > 0 && (
-            <Pressable onPress={() => { setKeyword(''); setHasSearched(false); setResults([]); }} style={styles.clearBtn}>
-              <Text style={styles.clearText}>X</Text>
+            <Pressable onPress={() => { setKeyword(''); setHasSearched(false); setResults([]); setError(null); }} style={styles.clearBtn}>
+              <Text style={[styles.clearText, { color: colors.textSecondary }]}>X</Text>
             </Pressable>
           )}
         </View>
@@ -77,6 +81,14 @@ export default function SearchScreen() {
 
       {loading ? (
         <ActivityIndicator size="large" color={colors.primary} style={styles.centerBox} />
+      ) : error ? (
+        <View style={styles.centerBox}>
+          <Text style={[styles.emptyText, { color: colors.textSecondary, marginBottom: 16 }]}>{error}</Text>
+          <Pressable onPress={performSearch} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 }}>
+            <RefreshCw size={16} color="#FFF" />
+            <Text style={{ color: '#FFF', fontWeight: 'bold', marginLeft: 6 }}>다시 시도</Text>
+          </Pressable>
+        </View>
       ) : hasSearched && results.length === 0 ? (
         <View style={styles.centerBox}>
           <Text style={[styles.emptyText, { color: colors.textSecondary }]}>'{keyword}'에 대한 검색 결과가 없습니다.</Text>
@@ -92,6 +104,7 @@ export default function SearchScreen() {
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.listContainer}
           renderItem={({ item }) => <ScholarshipCard item={item} />}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={performSearch} colors={['#2962FF']} />}
         />
       )}
     </View>
@@ -101,11 +114,11 @@ export default function SearchScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { padding: 16, elevation: 2 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: 12, paddingHorizontal: 12, height: 48 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 12, height: 48 },
   searchIcon: { marginRight: 8 },
   input: { flex: 1, fontSize: 16 },
   clearBtn: { padding: 8 },
-  clearText: { color: '#94a3b8', fontSize: 16, fontWeight: 'bold' },
+  clearText: { fontSize: 16, fontWeight: 'bold' },
   centerBox: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 100 },
   emptyText: { fontSize: 15 },
   listContainer: { padding: 20, paddingBottom: 100 }

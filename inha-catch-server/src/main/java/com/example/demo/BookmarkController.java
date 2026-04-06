@@ -8,12 +8,12 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/bookmarks")
-@CrossOrigin(origins = "*")
 public class BookmarkController {
 
     private final BookmarkRepository bookmarkRepository;
@@ -29,7 +29,8 @@ public class BookmarkController {
     @GetMapping
     public ResponseEntity<?> getMyBookmarks(Authentication authentication) {
         String email = authentication.getName();
-        User user = userRepository.findByEmail(email).orElseThrow();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new java.util.NoSuchElementException("사용자를 찾을 수 없습니다."));
         
         List<Scholarship> bookmarks = bookmarkRepository.findByUser(user)
                 .stream()
@@ -42,19 +43,21 @@ public class BookmarkController {
     @PostMapping("/{scholarshipId}")
     public ResponseEntity<?> toggleBookmark(@PathVariable Long scholarshipId, Authentication authentication) {
         String email = authentication.getName();
-        User user = userRepository.findByEmail(email).orElseThrow();
-        Scholarship scholarship = scholarshipRepository.findById(scholarshipId).orElseThrow();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new java.util.NoSuchElementException("사용자를 찾을 수 없습니다."));
+        Scholarship scholarship = scholarshipRepository.findById(scholarshipId)
+                .orElseThrow(() -> new java.util.NoSuchElementException("해당 공고를 찾을 수 없습니다."));
 
         Optional<UserBookmark> existing = bookmarkRepository.findByUserAndScholarship(user, scholarship);
         if (existing.isPresent()) {
             bookmarkRepository.delete(existing.get());
-            return ResponseEntity.ok().body("{\"message\": \"Bookmark removed\"}");
+            return ResponseEntity.ok(Map.of("message", "Bookmark removed", "bookmarked", false));
         } else {
             UserBookmark bookmark = new UserBookmark();
             bookmark.setUser(user);
             bookmark.setScholarship(scholarship);
             bookmarkRepository.save(bookmark);
-            return ResponseEntity.ok().body("{\"message\": \"Bookmark added\"}");
+            return ResponseEntity.ok(Map.of("message", "Bookmark added", "bookmarked", true));
         }
     }
 }
