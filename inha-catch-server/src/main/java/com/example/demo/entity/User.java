@@ -1,5 +1,6 @@
 package com.example.demo.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -18,6 +19,7 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @Column(nullable = false)
     private String password;
 
@@ -32,6 +34,18 @@ public class User {
 
     @Column(columnDefinition = "TEXT")
     private String keywords;
+
+    @Column(length = 20)
+    private String role = "USER";
+
+    @Column(name = "provider")
+    private String provider; // LOCAL, GOOGLE, KAKAO
+
+    @Column(name = "provider_id")
+    private String providerId; // 소셜 로그인 고유 ID
+
+    @Column(name = "fcm_token", length = 512)
+    private String fcmToken;
 
     @Column(name = "is_active")
     private Boolean isActive = true;
@@ -67,6 +81,18 @@ public class User {
     public String getKeywords() { return keywords; }
     public void setKeywords(String keywords) { this.keywords = keywords; }
     
+    public String getRole() { return role; }
+    public void setRole(String role) { this.role = role; }
+
+    public String getProvider() { return provider; }
+    public void setProvider(String provider) { this.provider = provider; }
+
+    public String getProviderId() { return providerId; }
+    public void setProviderId(String providerId) { this.providerId = providerId; }
+
+    public String getFcmToken() { return fcmToken; }
+    public void setFcmToken(String fcmToken) { this.fcmToken = fcmToken; }
+
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean active) { isActive = active; }
     

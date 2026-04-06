@@ -42,25 +42,27 @@ export const BookmarkProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   const toggleBookmark = async (id: number) => {
-    try {
-      // Optimistic UI update
-      setBookmarkedIds((prev) => {
-        let newBookmarks;
-        if (prev.includes(id)) {
-          newBookmarks = prev.filter(item => item !== id);
-        } else {
-          newBookmarks = [...prev, id];
-        }
-        AsyncStorage.setItem('@bookmarks', JSON.stringify(newBookmarks)).catch(e => 
-          console.error('Failed to save bookmarks locally', e)
-        );
-        return newBookmarks;
-      });
+    const previousIds = [...bookmarkedIds];
 
+    // Optimistic UI update
+    const newBookmarks = previousIds.includes(id)
+      ? previousIds.filter(item => item !== id)
+      : [...previousIds, id];
+    setBookmarkedIds(newBookmarks);
+    AsyncStorage.setItem('@bookmarks', JSON.stringify(newBookmarks)).catch(e =>
+      console.error('Failed to save bookmarks locally', e)
+    );
+
+    try {
       // API 호출로 서버 DB 반영
       await api.post(`/api/bookmarks/${id}`);
     } catch (error) {
       console.error('Bookmark server sync error:', error);
+      // 실패 시 이전 상태로 롤백
+      setBookmarkedIds(previousIds);
+      AsyncStorage.setItem('@bookmarks', JSON.stringify(previousIds)).catch(e =>
+        console.error('Failed to rollback bookmarks locally', e)
+      );
     }
   };
 

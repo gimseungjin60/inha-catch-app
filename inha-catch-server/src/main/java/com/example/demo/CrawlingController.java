@@ -6,7 +6,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/crawl")
-@CrossOrigin(origins = "*")
 public class CrawlingController {
 
     private final CrawlService crawlService;

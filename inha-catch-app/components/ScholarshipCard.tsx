@@ -16,12 +16,24 @@ export interface Scholarship {
   dDay: string;
 }
 
+const getDDayStyle = (dDay: string) => {
+  if (dDay === '마감') return { bg: '#FEE2E2', text: '#DC2626', border: '#FECACA' };
+  if (dDay === 'D-Day') return { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' };
+  if (dDay.startsWith('D-')) {
+    const num = parseInt(dDay.replace('D-', ''), 10);
+    if (!isNaN(num) && num <= 3) return { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' };
+    if (!isNaN(num) && num <= 7) return { bg: '#DBEAFE', text: '#2563EB', border: '#BFDBFE' };
+  }
+  return null; // 기본 스타일 사용
+};
+
 export default function ScholarshipCard({ item }: { item: Scholarship }) {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
   const router = useRouter();
-  const { bookmarkedIds, toggleBookmark, isBookmarked } = useBookmarks();
+  const { toggleBookmark, isBookmarked } = useBookmarks();
   const bookmarked = isBookmarked(item.id);
+  const ddayStyle = getDDayStyle(item.dDay);
 
   return (
     <Pressable onPress={() => router.push(`/details/${item.id}` as any)}>
@@ -30,24 +42,24 @@ export default function ScholarshipCard({ item }: { item: Scholarship }) {
         <View style={styles.header}>
           <View style={styles.badges}>
               {/* Type Badge */}
-              <View style={styles.typeBadge}>
-                 {item.type === 'scholarship' 
+              <View style={[styles.typeBadge, { backgroundColor: colors.tagBackground }]}>
+                 {item.type === 'scholarship'
                     ? <Award size={14} color={colors.primary} />
                     : <Trophy size={14} color="#9C27B0" />}
                  <Text style={[styles.typeBadgeText, { color: item.type === 'scholarship' ? colors.primary : '#9C27B0' }]}>
                    {item.type === 'scholarship' ? ' 장학금' : ' 공모전'}
                  </Text>
               </View>
-              
+
               {/* Recommend Badge */}
               {item.isRecommended && (
-                <View style={[styles.recommendBadge, { backgroundColor: '#F0F5FF' }]}>
+                <View style={[styles.recommendBadge, { backgroundColor: colors.aiBoxBackground }]}>
                    <Sparkles size={14} color="#FF9800" />
                    <Text style={[styles.recommendText, { color: colors.primary }]}> 추천</Text>
                 </View>
               )}
             </View>
-            <Pressable 
+            <Pressable
                 style={{ padding: 8, margin: -8 }}
                 onPress={(e) => {
                     e.stopPropagation();
@@ -59,7 +71,7 @@ export default function ScholarshipCard({ item }: { item: Scholarship }) {
           </View>
 
           {/* Title */}
-          <Text style={[styles.title, { color: colors.text }]}>{item.title}</Text>
+          <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
 
           {/* AI Summary Box */}
           <View style={[styles.aiBox, { backgroundColor: colors.aiBoxBackground }]}>
@@ -84,9 +96,16 @@ export default function ScholarshipCard({ item }: { item: Scholarship }) {
                    <Text style={[styles.moreTags, { color: colors.tagText }]}>+{item.tags.length - 2}</Text>
                 )}
              </View>
-             
-             <View style={[styles.ddayBadge, { borderColor: colors.primary }]}>
-                <Text style={[styles.ddayText, { color: colors.primary }]}>{item.dDay}</Text>
+
+             <View style={[
+               styles.ddayBadge,
+               ddayStyle
+                 ? { backgroundColor: ddayStyle.bg, borderColor: ddayStyle.border }
+                 : { borderColor: colors.primary }
+             ]}>
+                <Text style={[styles.ddayText, { color: ddayStyle ? ddayStyle.text : colors.primary }]}>
+                  {item.dDay}
+                </Text>
              </View>
           </View>
       </View>
@@ -98,7 +117,7 @@ const styles = StyleSheet.create({
   card: { borderRadius: 16, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   badges: { flexDirection: 'row', gap: 8 },
-  typeBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F7FA', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  typeBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
   typeBadgeText: { fontSize: 12, fontWeight: '600', marginLeft: 2 },
   recommendBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
   recommendText: { fontSize: 12, fontWeight: '600', marginLeft: 2 },
