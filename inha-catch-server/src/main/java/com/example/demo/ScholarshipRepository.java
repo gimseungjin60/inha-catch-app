@@ -4,6 +4,7 @@ import com.example.demo.entity.Scholarship;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 @Repository
@@ -16,4 +17,6 @@ public interface ScholarshipRepository extends JpaRepository<Scholarship, Long> 
     boolean existsBySourceSiteAndBoardIdAndArticleId(String sourceSite, String boardId, Long articleId);
 
     org.springframework.data.domain.Page<Scholarship> findByTitleContainingOrContentContainingOrBasicSummaryContainingOrDetailSummaryContaining(String title, String content, String basicSummary, String detailSummary, org.springframework.data.domain.Pageable pageable);
+
+    long countByCrawledAtAfter(LocalDateTime dateTime);
 }

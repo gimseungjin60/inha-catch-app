@@ -7,16 +7,35 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RefreshCw } from 'lucide-react-native';
+import { useUser } from '@/context/UserContext';
 
 export default function BookmarkScreen() {
   const { bookmarkedIds } = useBookmarks();
+  const { profile } = useUser();
   const [bookmarkedItems, setBookmarkedItems] = useState<Scholarship[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recommendedIds, setRecommendedIds] = useState<Set<number>>(new Set());
 
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
+
+  // 추천 ID 목록을 한 번 불러옴
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (profile.major) params.append('major', profile.major);
+    if (profile.keywords?.length) params.append('keywords', profile.keywords.join(','));
+
+    api.get(`/api/scholarships/recommended?${params.toString()}`)
+      .then(res => {
+        const ids = new Set<number>(
+          (res.data || []).map((r: any) => r.scholarship?.id ?? r.id).filter(Boolean)
+        );
+        setRecommendedIds(ids);
+      })
+      .catch(() => {});
+  }, [profile.major, profile.keywords]);
 
   const fetchBookmarked = () => {
     if (bookmarkedIds.length === 0) {
@@ -24,28 +43,28 @@ export default function BookmarkScreen() {
       return;
     }
 
+    if (!profile.isLoggedIn) {
+      setBookmarkedItems([]);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
-    // 각 북마크 ID에 대해 단건 조회 (새로 추가한 /{id} 엔드��인트 활용)
-    Promise.all(
-      bookmarkedIds.map(id =>
-        api.get(`/api/scholarships/${id}`).then(res => res.data).catch(() => null)
-      )
-    )
-      .then(results => {
-        const mapped: Scholarship[] = results
-          .filter((d: any) => d !== null)
-          .map((d: any) => {
+    // 서버에서 북마크된 장학금을 일괄 조회 (N+1 방지)
+    api.get('/api/bookmarks')
+      .then(res => {
+        const rawData = res.data || [];
+        const mapped: Scholarship[] = rawData.map((d: any) => {
             const tags = [];
-            if (d.title.includes('공모전')) tags.push('#공모전');
+            if (d.title?.includes('공모전')) tags.push('#공모전');
             else tags.push('#장학금');
             if (d.eligibility && d.eligibility.length < 10) tags.push('#' + d.eligibility);
 
             return {
               id: d.id,
-              type: d.title.includes('공모전') ? 'contest' : 'scholarship',
-              isRecommended: d.viewCount && d.viewCount > 100,
+              type: d.title?.includes('공모전') ? 'contest' : 'scholarship',
+              isRecommended: recommendedIds.has(d.id),
               title: d.title,
               aiSummary: [
                 d.eligibility || '자격 조건은 상세 요강 참조',
@@ -98,9 +117,7 @@ export default function BookmarkScreen() {
            keyExtractor={(item) => item.id.toString()}
            contentContainerStyle={styles.listContainer}
            renderItem={({ item }) => <ScholarshipCard item={item} />}
-           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchBookmarked(); }} colors={['#2962FF']} />}
-           onRefresh={() => { setRefreshing(true); fetchBookmarked(); }}
-           refreshing={refreshing}
+           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchBookmarked(); }} colors={[colors.primary]} />}
          />
        )}
     </SafeAreaView>

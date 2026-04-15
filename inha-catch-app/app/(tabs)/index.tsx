@@ -150,7 +150,9 @@ export default function HomeScreen() {
               <Text style={styles.titleText}>Inha-Catch</Text>
               <Text style={styles.subtitleText}>당신의 기회를 찾아드려요</Text>
             </View>
-            <Bell size={24} color="#FFF" />
+            <Pressable onPress={() => router.push('/(tabs)/notifications' as any)}>
+              <Bell size={24} color="#FFF" />
+            </Pressable>
           </View>
 
           <View style={styles.tabsContainer}>
@@ -221,7 +223,7 @@ const styles = StyleSheet.create({
   tabChipActive: { backgroundColor: '#FFFFFF' },
   tabChipInactive: { backgroundColor: 'rgba(255, 255, 255, 0.2)' },
   tabChipText: { fontSize: 14, fontWeight: '600' },
-  tabChipTextActive: { color: '#2962FF' },
+  tabChipTextActive: { color: '#1A56DB' },
   tabChipTextInactive: { color: '#FFFFFF' },
   contentContainer: {
     padding: 20,

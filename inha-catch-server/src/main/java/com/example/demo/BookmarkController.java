@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/bookmarks")
@@ -32,11 +31,7 @@ public class BookmarkController {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new java.util.NoSuchElementException("사용자를 찾을 수 없습니다."));
         
-        List<Scholarship> bookmarks = bookmarkRepository.findByUser(user)
-                .stream()
-                .map(UserBookmark::getScholarship)
-                .collect(Collectors.toList());
-        
+        List<Scholarship> bookmarks = bookmarkRepository.findScholarshipsByUser(user);
         return ResponseEntity.ok(bookmarks);
     }
 
@@ -51,13 +46,13 @@ public class BookmarkController {
         Optional<UserBookmark> existing = bookmarkRepository.findByUserAndScholarship(user, scholarship);
         if (existing.isPresent()) {
             bookmarkRepository.delete(existing.get());
-            return ResponseEntity.ok(Map.of("message", "Bookmark removed", "bookmarked", false));
+            return ResponseEntity.ok(Map.of("message", "북마크가 해제되었습니다.", "bookmarked", false));
         } else {
             UserBookmark bookmark = new UserBookmark();
             bookmark.setUser(user);
             bookmark.setScholarship(scholarship);
             bookmarkRepository.save(bookmark);
-            return ResponseEntity.ok(Map.of("message", "Bookmark added", "bookmarked", true));
+            return ResponseEntity.ok(Map.of("message", "북마크에 추가되었습니다.", "bookmarked", true));
         }
     }
 }

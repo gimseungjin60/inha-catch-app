@@ -20,6 +20,11 @@ import java.util.List;
                         name = "uk_source_board_article",
                         columnNames = {"source_site", "board_id", "article_id"}
                 )
+        },
+        indexes = {
+                @Index(name = "idx_article_id", columnList = "article_id"),
+                @Index(name = "idx_posted_at", columnList = "posted_at"),
+                @Index(name = "idx_content_hash", columnList = "content_hash")
         }
 )
 @Getter

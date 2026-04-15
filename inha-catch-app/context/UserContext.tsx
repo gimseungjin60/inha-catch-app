@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 type UserProfile = {
   name: string;
   major: string;
-  grade: string;
+  grade?: string;
   keywords: string[];
   isLoggedIn: boolean;
   role?: string;
@@ -19,7 +19,6 @@ type UserContextType = {
 const defaultProfile: UserProfile = {
   name: '',
   major: '',
-  grade: '',
   keywords: [],
   isLoggedIn: false,
 };

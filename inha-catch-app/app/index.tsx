@@ -1,16 +1,47 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, SafeAreaView, ActivityIndicator, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, SafeAreaView, ActivityIndicator, Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { Sparkles } from 'lucide-react-native';
+import { Sparkles, MessageCircle } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { loginWithKakao } from '@/hooks/useKakaoAuth';
 
 export default function WelcomeScreen() {
   const router = useRouter();
-  const { profile, isLoading } = useUser();
+  const { profile, isLoading, updateProfile } = useUser();
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
+  const [isKakaoLoading, setIsKakaoLoading] = useState(false);
+
+  const handleKakaoLogin = async () => {
+    setIsKakaoLoading(true);
+    try {
+      const result = await loginWithKakao();
+      if (result) {
+        await AsyncStorage.setItem('@jwt_token', result.token);
+        await AsyncStorage.setItem('@refresh_token', result.refreshToken);
+        await updateProfile({
+          name: result.user.name,
+          major: result.user.major || '',
+          keywords: result.user.keywords ? result.user.keywords.split(',').filter(Boolean) : [],
+          isLoggedIn: true,
+          role: result.user.role || 'USER',
+        });
+        if (result.isNewUser) {
+          router.replace('/(tabs)/profile');
+        } else {
+          router.replace('/(tabs)');
+        }
+      }
+    } catch {
+      const msg = '카카오 로그인 중 오류가 발생했습니다.';
+      Platform.OS === 'web' ? window.alert(msg) : Alert.alert('로그인 실패', msg);
+    } finally {
+      setIsKakaoLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!isLoading && profile.isLoggedIn) {
@@ -46,11 +77,26 @@ export default function WelcomeScreen() {
           <Text style={styles.loginBtnText}>로그인</Text>
         </Pressable>
         
-        <Pressable 
+        <Pressable
           style={[styles.signupBtn, { borderColor: colors.primary }]}
           onPress={() => router.push('/signup')}
         >
           <Text style={[styles.signupBtnText, { color: colors.primary }]}>무료 회원가입</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.kakaoBtn, { opacity: isKakaoLoading ? 0.6 : 1 }]}
+          onPress={handleKakaoLogin}
+          disabled={isKakaoLoading}
+        >
+          {isKakaoLoading ? (
+            <ActivityIndicator color="#3C1E1E" />
+          ) : (
+            <>
+              <MessageCircle size={20} color="#3C1E1E" fill="#3C1E1E" style={{ marginRight: 8 }} />
+              <Text style={styles.kakaoBtnText}>카카오로 시작하기</Text>
+            </>
+          )}
         </Pressable>
       </View>
     </SafeAreaView>
@@ -132,5 +178,24 @@ const styles = StyleSheet.create({
   signupBtnText: {
     fontSize: 18,
     fontWeight: 'bold',
-  }
+  },
+  kakaoBtn: {
+    paddingVertical: 18,
+    borderRadius: 16,
+    backgroundColor: '#FEE500',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  kakaoBtnText: {
+    color: '#3C1E1E',
+    fontSize: 17,
+    fontWeight: 'bold',
+  },
 });

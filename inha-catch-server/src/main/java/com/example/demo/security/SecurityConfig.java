@@ -32,16 +32,17 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    @org.springframework.beans.factory.annotation.Value("${cors.allowed-origins:http://localhost:*,http://10.0.2.2:*,http://127.0.0.1:*}")
+    private String corsAllowedOrigins;
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(
-            "http://localhost:8081",
-            "http://localhost:19006",
-            "http://10.0.2.2:8081"
-        ));
+        configuration.setAllowedOriginPatterns(
+                Arrays.asList(corsAllowedOrigins.split(","))
+        );
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Bypass-Tunnel-Reminder"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 
@@ -61,6 +62,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/scholarships/**").permitAll()
                 .requestMatchers("/api/crawl/**").hasRole("ADMIN")
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

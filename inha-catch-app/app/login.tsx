@@ -5,8 +5,9 @@ import { useUser } from '@/context/UserContext';
 import Colors from '@/constants/Colors';
 import api from '@/api/axios';
 import { useColorScheme } from '@/components/useColorScheme';
-import { Mail, Lock, ChevronLeft } from 'lucide-react-native';
+import { Mail, Lock, ChevronLeft, MessageCircle } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { loginWithKakao } from '@/hooks/useKakaoAuth';
 
 const showAlert = (title: string, msg: string) => {
   Platform.OS === 'web' ? window.alert(msg) : Alert.alert(title, msg);
@@ -21,9 +22,22 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isKakaoLoading, setIsKakaoLoading] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [isResetting, setIsResetting] = useState(false);
+
+  const saveLoginData = async (data: any) => {
+    await AsyncStorage.setItem('@jwt_token', data.token);
+    await AsyncStorage.setItem('@refresh_token', data.refreshToken);
+    await updateProfile({
+      name: data.user.name,
+      major: data.user.major || '',
+      keywords: data.user.keywords ? data.user.keywords.split(',').filter(Boolean) : [],
+      isLoggedIn: true,
+      role: data.user.role || 'USER',
+    });
+  };
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -38,24 +52,35 @@ export default function LoginScreen() {
         password: password.trim(),
       });
 
-      await AsyncStorage.setItem('@jwt_token', res.data.token);
-      await AsyncStorage.setItem('@refresh_token', res.data.refreshToken);
-      await updateProfile({
-        ...profile,
-        name: res.data.user.name,
-        major: res.data.user.major || '',
-        grade: '',
-        keywords: res.data.user.keywords ? res.data.user.keywords.split(',').filter(Boolean) : [],
-        isLoggedIn: true,
-        role: res.data.user.role || 'USER',
-      });
-
+      await saveLoginData(res.data);
       router.replace('/(tabs)');
     } catch (err: any) {
       const msg = err.response?.data?.message || '이메일 혹은 비밀번호를 확인해주세요.';
       showAlert('로그인 실패', msg);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleKakaoLogin = async () => {
+    setIsKakaoLoading(true);
+    try {
+      const result = await loginWithKakao();
+      if (result) {
+        await saveLoginData(result);
+        if (result.isNewUser) {
+          // 신규 유저: 프로필 설정 페이지로
+          router.replace('/(tabs)/profile');
+        } else {
+          router.replace('/(tabs)');
+        }
+      } else {
+        showAlert('로그인 실패', '카카오 로그인이 취소되었습니다.');
+      }
+    } catch (err: any) {
+      showAlert('로그인 실패', '카카오 로그인 중 오류가 발생했습니다.');
+    } finally {
+      setIsKakaoLoading(false);
     }
   };
 
@@ -138,6 +163,29 @@ export default function LoginScreen() {
               )}
             </Pressable>
 
+            {/* 구분선 */}
+            <View style={styles.dividerRow}>
+              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+              <Text style={[styles.dividerText, { color: colors.textSecondary }]}>또는</Text>
+              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+            </View>
+
+            {/* 카카오 로그인 버튼 */}
+            <Pressable
+              style={[styles.kakaoBtn, { opacity: isKakaoLoading ? 0.6 : 1 }]}
+              onPress={handleKakaoLogin}
+              disabled={isKakaoLoading}
+            >
+              {isKakaoLoading ? (
+                <ActivityIndicator color="#3C1E1E" />
+              ) : (
+                <>
+                  <MessageCircle size={20} color="#3C1E1E" fill="#3C1E1E" style={{ marginRight: 8 }} />
+                  <Text style={styles.kakaoBtnText}>카카오로 시작하기</Text>
+                </>
+              )}
+            </Pressable>
+
             <View style={styles.footerRow}>
               <Text style={{ color: colors.textSecondary }}>계정이 없으신가요? </Text>
               <Pressable onPress={() => router.push('/signup')}>
@@ -194,22 +242,44 @@ const styles = StyleSheet.create({
   title: { fontSize: 32, fontWeight: 'bold', marginBottom: 12 },
   subtitle: { fontSize: 16, marginBottom: 40 },
   form: { flex: 1 },
-  inputContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    borderWidth: 1, 
-    borderRadius: 16, 
-    marginBottom: 16, 
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 16,
+    marginBottom: 16,
     paddingHorizontal: 16,
     height: 56
   },
   inputIcon: { marginRight: 12 },
   input: { flex: 1, fontSize: 16 },
-  forgotBtn: { alignSelf: 'flex-end', marginBottom: 32 },
+  forgotBtn: { alignSelf: 'flex-end', marginBottom: 24 },
   forgotText: { fontSize: 14, fontWeight: '600' },
   loginBtn: {
     height: 56,
     borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  loginBtnText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  dividerLine: { flex: 1, height: 1 },
+  dividerText: { marginHorizontal: 16, fontSize: 14 },
+  kakaoBtn: {
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: '#FEE500',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
@@ -219,7 +289,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
-  loginBtnText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  kakaoBtnText: { color: '#3C1E1E', fontSize: 17, fontWeight: 'bold' },
   footerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalContent: { width: '100%', borderRadius: 20, padding: 24 },

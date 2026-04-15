@@ -40,7 +40,6 @@ public class AdminInitializer implements CommandLineRunner {
         log.info("================================================");
         log.info("  어드민 계정이 생성되었습니다!");
         log.info("  이메일: {}", adminEmail);
-        log.info("  비밀번호: admin1234");
         log.info("  ※ 첫 로그인 후 반드시 비밀번호를 변경하세요!");
         log.info("================================================");
     }

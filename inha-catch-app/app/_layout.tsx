@@ -7,6 +7,7 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { setOnAuthFailure } from '@/api/axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -46,6 +47,7 @@ export default function RootLayout() {
 
 import { BookmarkProvider } from '@/context/BookmarkContext';
 import { UserProvider, useUser } from '@/context/UserContext';
+import { useNotificationSetup } from '@/hooks/useNotifications';
 
 function AuthFailureHandler() {
   const router = useRouter();
@@ -53,11 +55,18 @@ function AuthFailureHandler() {
 
   useEffect(() => {
     setOnAuthFailure(async () => {
+      await AsyncStorage.multiRemove(['@bookmarks', '@cache_scholarships']);
       await updateProfile({ name: '', major: '', grade: '', keywords: [], isLoggedIn: false });
       router.replace('/login');
     });
   }, [router, updateProfile]);
 
+  return null;
+}
+
+function NotificationInitializer() {
+  const { profile } = useUser();
+  useNotificationSetup(profile.isLoggedIn);
   return null;
 }
 
@@ -69,10 +78,10 @@ function RootLayoutNav() {
       <BookmarkProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <AuthFailureHandler />
+          <NotificationInitializer />
           <Stack>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="admin" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
           </Stack>
         </ThemeProvider>
       </BookmarkProvider>
