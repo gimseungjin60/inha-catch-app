@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, FlatList, ActivityIndicator, Platform, Pressable, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Search, RefreshCw } from 'lucide-react-native';
@@ -6,17 +6,89 @@ import api from '@/api/axios';
 import ScholarshipCard, { Scholarship } from '@/components/ScholarshipCard';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
+import { useUser } from '@/context/UserContext';
 
 export default function SearchScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
 
+  const { profile } = useUser();
   const [keyword, setKeyword] = useState('');
   const [results, setResults] = useState<Scholarship[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recommendedIds, setRecommendedIds] = useState<Set<number>>(new Set());
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 추천 ID 목록을 한 번 불러옴
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (profile.major) params.append('major', profile.major);
+    if (profile.keywords?.length) params.append('keywords', profile.keywords.join(','));
+
+    api.get(`/api/scholarships/recommended?${params.toString()}`)
+      .then(res => {
+        const ids = new Set<number>(
+          (res.data || []).map((r: any) => r.scholarship?.id ?? r.id).filter(Boolean)
+        );
+        setRecommendedIds(ids);
+      })
+      .catch(() => {});
+  }, [profile.major, profile.keywords]);
+
+  const handleKeywordChange = useCallback((text: string) => {
+    setKeyword(text);
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    if (text.trim().length > 0) {
+      debounceTimer.current = setTimeout(() => {
+        performSearchWithKeyword(text);
+      }, 400);
+    } else {
+      setHasSearched(false);
+      setResults([]);
+      setError(null);
+    }
+  }, [recommendedIds]);
+
+  const performSearchWithKeyword = (searchKeyword: string) => {
+    if (!searchKeyword.trim()) return;
+    setLoading(true);
+    setHasSearched(true);
+    setError(null);
+
+    api.get(`/api/scholarships/search?keyword=${encodeURIComponent(searchKeyword)}&size=100`)
+      .then(res => {
+        const rawData = res.data.content || res.data;
+        const mapped: Scholarship[] = rawData.map((d: any) => {
+          const tags = [];
+          if (d.title.includes('공모전')) tags.push('#공모전');
+          else tags.push('#장학금');
+          if (d.eligibility && d.eligibility.length < 10) tags.push('#' + d.eligibility);
+
+          return {
+            id: d.id,
+            type: d.title.includes('공모전') ? 'contest' : 'scholarship',
+            isRecommended: recommendedIds.has(d.id),
+            title: d.title,
+            aiSummary: [
+              d.eligibility || '자격 조건은 상세 요강 참조',
+              d.amountInfo || '지원 내역은 상세 요강 참조',
+              d.applyPeriod || '모집 기한은 상세 요강 참조'
+            ],
+            tags: tags.length ? tags : ['#인하대'],
+            dDay: d.dDay || '상시',
+          };
+        });
+        setResults(mapped);
+      })
+      .catch(err => {
+        console.error(err);
+        setError('검색 중 오류가 발생했습니다.');
+      })
+      .finally(() => setLoading(false));
+  };
 
   const performSearch = () => {
     if (!keyword.trim()) return;
@@ -36,7 +108,7 @@ export default function SearchScreen() {
           return {
             id: d.id,
             type: d.title.includes('공모전') ? 'contest' : 'scholarship',
-            isRecommended: d.viewCount && d.viewCount > 100,
+            isRecommended: recommendedIds.has(d.id),
             title: d.title,
             aiSummary: [
               d.eligibility || '자격 조건은 상세 요강 참조',
@@ -66,7 +138,7 @@ export default function SearchScreen() {
             placeholder="장학금, 공모전 키워드로 검색해보세요."
             placeholderTextColor={colors.textSecondary}
             value={keyword}
-            onChangeText={setKeyword}
+            onChangeText={handleKeywordChange}
             onSubmitEditing={performSearch}
             returnKeyType="search"
             autoCorrect={false}
@@ -104,7 +176,7 @@ export default function SearchScreen() {
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.listContainer}
           renderItem={({ item }) => <ScholarshipCard item={item} />}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={performSearch} colors={['#2962FF']} />}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={performSearch} colors={[colors.primary]} />}
         />
       )}
     </View>

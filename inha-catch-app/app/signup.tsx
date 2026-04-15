@@ -48,8 +48,12 @@ export default function SignupScreen() {
       showAlert('알림', '올바른 이메일 형식을 입력해주세요.');
       return;
     }
-    if (password.length < 4) {
-      showAlert('알림', '비밀번호는 4자 이상이어야 합니다.');
+    if (password.length < 8) {
+      showAlert('알림', '비밀번호는 8자 이상이어야 합니다.');
+      return;
+    }
+    if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+      showAlert('알림', '비밀번호는 영문과 숫자를 모두 포함해야 합니다.');
       return;
     }
 
@@ -63,15 +67,19 @@ export default function SignupScreen() {
         keywords: keywords.join(','),
       });
 
-      await AsyncStorage.setItem('@jwt_token', res.data.token);
-      await AsyncStorage.setItem('@refresh_token', res.data.refreshToken);
+      const { token, refreshToken, user } = res.data;
+      if (!token || !user) {
+        showAlert('회원가입 실패', '서버 응답이 올바르지 않습니다.');
+        return;
+      }
+      await AsyncStorage.setItem('@jwt_token', token);
+      await AsyncStorage.setItem('@refresh_token', refreshToken);
       await updateProfile({
-        name: res.data.user.name,
-        major: res.data.user.major || '',
-        grade: '',
-        keywords: res.data.user.keywords ? res.data.user.keywords.split(',').filter(Boolean) : [],
+        name: user.name || name.trim(),
+        major: user.major || major.trim(),
+        keywords: user.keywords ? user.keywords.split(',').filter(Boolean) : keywords,
         isLoggedIn: true,
-        role: res.data.user.role || 'USER',
+        role: user.role || 'USER',
       });
 
       router.replace('/(tabs)');

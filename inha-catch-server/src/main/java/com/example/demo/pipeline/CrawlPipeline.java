@@ -9,6 +9,7 @@ import com.example.demo.entity.ScholarshipAttachment;
 import com.example.demo.event.CrawlEvent;
 import com.example.demo.repository.CrawlErrorLogRepository;
 import com.example.demo.ScholarshipRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
 
+@Slf4j
 @Service
 public class CrawlPipeline {
 
@@ -25,12 +27,16 @@ public class CrawlPipeline {
     private final GeminiService geminiService;
     private final CrawlErrorLogRepository errorLogRepository;
     private final TransactionTemplate transactionTemplate;
+    private final com.example.demo.NotificationService notificationService;
 
-    public CrawlPipeline(ScholarshipRepository repository, GeminiService geminiService, CrawlErrorLogRepository errorLogRepository, TransactionTemplate transactionTemplate) {
+    public CrawlPipeline(ScholarshipRepository repository, GeminiService geminiService,
+                         CrawlErrorLogRepository errorLogRepository, TransactionTemplate transactionTemplate,
+                         com.example.demo.NotificationService notificationService) {
         this.repository = repository;
         this.geminiService = geminiService;
         this.errorLogRepository = errorLogRepository;
         this.transactionTemplate = transactionTemplate;
+        this.notificationService = notificationService;
     }
 
     private String calculateHash(String input) {
@@ -49,7 +55,7 @@ public class CrawlPipeline {
     public void processCrawlEvent(CrawlEvent event) {
         ScholarshipDto dto = event.getScholarshipDto();
         try {
-            transactionTemplate.execute(status -> {
+            Scholarship savedPost = transactionTemplate.execute(status -> {
                 Scholarship post = repository.findBySourceSiteAndBoardIdAndArticleId(
                         dto.getSourceSite(), dto.getBoardId(), dto.getArticleId()
                 ).orElseGet(Scholarship::new);
@@ -58,7 +64,7 @@ public class CrawlPipeline {
                 
                 // 해시 기반 변경 감지 (존재하며 해시가 같고 요약본이 정상이면 스킵)
                 if (post.getId() != null && currentHash.equals(post.getContentHash()) && post.getBasicSummary() != null && !post.getBasicSummary().contains("오류") && !post.getBasicSummary().contains("내용이 없어")) {
-                    System.out.println("해시 일치 (수정사항 없음): " + post.getTitle());
+                    log.debug("해시 일치 (수정사항 없음): {}", post.getTitle());
                     return null; 
                 }
 
@@ -75,13 +81,19 @@ public class CrawlPipeline {
                 post.setContent(dto.getContent());
                 post.setContentHash(currentHash);
 
+                // 2025년 이전 데이터 또는 날짜 없는 데이터는 저장하지 않음
+                if (dto.getPostedAt() == null || dto.getPostedAt().getYear() < 2025) {
+                    log.debug("2025년 이전 또는 날짜 없는 데이터 스킵: {}", post.getTitle());
+                    return null;
+                }
+
                 String combinedText = post.getTitle() + " " + (dto.getContent() != null ? dto.getContent() : "") + " " + (dto.getApplyPeriod() != null ? dto.getApplyPeriod() : "");
-                if (combinedText.contains("2025") || combinedText.contains("25년")) {
-                    post.setBasicSummary("2025년도 이전 공지로 판단되어 AI 요약을 생략했습니다.");
-                    post.setDetailSummary("2025년도 이전 공지로 판단되어 AI 요약을 생략했습니다.");
-                } else if (dto.getContent() != null && !dto.getContent().trim().isEmpty()) {
-                    System.out.println("Generating Unified AI Summary for: " + post.getTitle());
-                    try { Thread.sleep(5000); } catch (InterruptedException e) {}
+                if (dto.getContent() != null && !dto.getContent().trim().isEmpty()) {
+                    log.info("Generating Unified AI Summary for: {}", post.getTitle());
+                    try { Thread.sleep(15000); } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return null;
+                    }
                     String summary = geminiService.generateSummary(GeminiService.PROMPT_UNIFIED, dto.getContent());
                     
                     if (summary.contains("SKIP_OLD") || summary.contains("SKIP_DUP")) {
@@ -119,11 +131,16 @@ public class CrawlPipeline {
                     post.getAttachments().add(attachment);
                 }
 
-                repository.save(post);
-                return null;
+                Scholarship saved = repository.save(post);
+                return saved;
             });
+
+            // 새로 저장된 장학금이면 알림 발송
+            if (savedPost != null && savedPost.getId() != null) {
+                notificationService.notifyNewScholarship(savedPost);
+            }
         } catch (Exception e) {
-            System.err.println("Crawling Pipeline Error for " + dto.getLink() + " : " + e.getMessage());
+            log.error("Crawling Pipeline Error for {} : {}", dto.getLink(), e.getMessage());
             errorLogRepository.save(new CrawlErrorLog(dto.getLink(), e.getMessage()));
         }
     }

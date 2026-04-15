@@ -1,2 +1,3 @@
 inha-catch-server/src/main/resources/application-local.properties
+inha-catch-server/src/main/resources/firebase-service-account.json
 

@@ -8,6 +8,7 @@ import { UserCircle, Tag, Lock, Shield } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '@/api/axios';
+import { validatePassword } from '@/utils/validation';
 
 const showAlert = (title: string, msg: string) => {
   Platform.OS === 'web' ? window.alert(msg) : Alert.alert(title, msg);
@@ -55,7 +56,10 @@ export default function ProfileScreen() {
     setIsSaving(true);
     try {
       if (profile.isLoggedIn) {
-        await api.put('/api/user/profile', { name, major, keywords: keywords.join(',') });
+        const token = await AsyncStorage.getItem('@jwt_token');
+        if (token) {
+          await api.put('/api/user/profile', { name, major, keywords: keywords.join(',') });
+        }
       }
       await updateProfile({ ...profile, name, major, keywords });
       showAlert('저장 완료', '내 정보가 업데이트 되었습니다!');
@@ -72,8 +76,9 @@ export default function ProfileScreen() {
       showAlert('알림', '현재 비밀번호를 입력해주세요.');
       return;
     }
-    if (newPassword.length < 4) {
-      showAlert('알림', '새 비밀번호는 4자 이상이어야 합니다.');
+    const pwError = validatePassword(newPassword);
+    if (pwError) {
+      showAlert('알림', pwError);
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -105,7 +110,10 @@ export default function ProfileScreen() {
     } catch (err) {
       console.log('로그아웃 서버 처리 오류 무시', err);
     }
-    await AsyncStorage.multiRemove(['@jwt_token', '@refresh_token', '@user_profile']);
+    await AsyncStorage.multiRemove([
+      '@jwt_token', '@refresh_token', '@user_profile',
+      '@bookmarks', '@cache_scholarships'
+    ]);
     await updateProfile({ name: '', major: '', grade: '', keywords: [], isLoggedIn: false });
     router.replace('/login');
   };
@@ -220,7 +228,7 @@ export default function ProfileScreen() {
               />
               <TextInput
                 style={[styles.input, { backgroundColor: colors.screenBackground, color: colors.text, marginBottom: 12 }]}
-                placeholder="새 비밀번호 (4자 이상)"
+                placeholder="새 비밀번호 (영문+숫자 8자 이상)"
                 placeholderTextColor={colors.textSecondary}
                 secureTextEntry
                 value={newPassword}

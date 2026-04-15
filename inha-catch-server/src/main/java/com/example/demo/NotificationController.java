@@ -53,7 +53,14 @@ public class NotificationController {
 
     @PostMapping("/{id}/read")
     public ResponseEntity<?> markAsRead(@PathVariable Long id, Authentication authentication) {
+        User user = userRepository.findByEmail(authentication.getName()).orElseThrow();
         Notification notification = notificationRepository.findById(id).orElseThrow();
+
+        // 본인의 알림만 읽음 처리 가능
+        if (!notification.getUser().getId().equals(user.getId())) {
+            return ResponseEntity.status(403).body(Map.of("message", "권한이 없습니다."));
+        }
+
         notification.setRead(true);
         notificationRepository.save(notification);
         return ResponseEntity.ok(Map.of("message", "읽음 처리 완료"));
@@ -66,5 +73,26 @@ public class NotificationController {
         unread.forEach(n -> n.setRead(true));
         notificationRepository.saveAll(unread);
         return ResponseEntity.ok(Map.of("message", "전체 읽음 처리 완료", "count", unread.size()));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteNotification(@PathVariable Long id, Authentication authentication) {
+        User user = userRepository.findByEmail(authentication.getName()).orElseThrow();
+        Notification notification = notificationRepository.findById(id).orElseThrow();
+
+        if (!notification.getUser().getId().equals(user.getId())) {
+            return ResponseEntity.status(403).body(Map.of("message", "권한이 없습니다."));
+        }
+
+        notificationRepository.delete(notification);
+        return ResponseEntity.ok(Map.of("message", "알림이 삭제되었습니다."));
+    }
+
+    @DeleteMapping("/all")
+    public ResponseEntity<?> deleteAllNotifications(Authentication authentication) {
+        User user = userRepository.findByEmail(authentication.getName()).orElseThrow();
+        List<Notification> notifications = notificationRepository.findByUserOrderByCreatedAtDesc(user);
+        notificationRepository.deleteAll(notifications);
+        return ResponseEntity.ok(Map.of("message", "전체 알림이 삭제되었습니다.", "count", notifications.size()));
     }
 }

@@ -75,70 +75,120 @@ public class ScholarshipController {
                 .collect(Collectors.toList());
 
         String majorTrimmed = major.trim();
-        LocalDate today = LocalDate.now();
 
-        List<Scholarship> all = repository.findAll();
+        // 프로필 정보가 아예 없으면 추천 불가
+        if (majorTrimmed.isEmpty() && keywordList.isEmpty()) {
+            return ResponseEntity.ok(Collections.emptyList());
+        }
+
+        LocalDate today = LocalDate.now();
+        // 최근 500건만 대상으로 추천 (OOM 방지)
+        Pageable recommendPageable = PageRequest.of(0, 500, Sort.by(Sort.Direction.DESC, "articleId"));
+        List<Scholarship> all = repository.findAll(recommendPageable).getContent();
 
         List<RecommendedScholarshipDto> result = all.stream()
                 .map(s -> {
-                    int score = calculateScore(s, majorTrimmed, keywordList, today);
-                    return new RecommendedScholarshipDto(s, score);
+                    int[] scores = calculateScore(s, majorTrimmed, keywordList, today);
+                    return new RecommendedScholarshipDto(s, scores[0], scores[1]);
                 })
-                .filter(dto -> dto.getScore() > 0)
-                .sorted(Comparator.comparingInt(RecommendedScholarshipDto::getScore).reversed())
-                .limit(20)
+                // 개인 관련성 점수가 최소 25점 이상이어야 추천
+                .filter(dto -> dto.getPersonalScore() >= 25)
+                .sorted(Comparator.comparingInt(RecommendedScholarshipDto::getTotalScore).reversed())
+                .limit(15)
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(result);
     }
 
-    private int calculateScore(Scholarship s, String major, List<String> keywords, LocalDate today) {
-        int score = 0;
-        String title = nullSafe(s.getTitle());
-        String eligibility = nullSafe(s.getEligibility());
-        String basicSummary = nullSafe(s.getBasicSummary());
+    /**
+     * 추천 점수 계산. 반환값: [totalScore, personalScore]
+     *
+     * ── 개인 관련성 (personalScore) ──
+     *   학과 매칭 (eligibility/content)  → +30
+     *   학과 매칭 (title/basicSummary)   → +20
+     *   키워드 매칭 (eligibility)        → 키워드당 +25
+     *   키워드 매칭 (title/summary/content) → 키워드당 +15
+     *   ※ 같은 키워드의 중복 필드 매칭은 최고점 1회만 적용
+     *
+     * ── 긴급성 보너스 ──
+     *   D-1~3   → +15
+     *   D-4~7   → +10
+     *   D-8~14  → +5
+     *
+     * ── 최신성 보너스 ──
+     *   3일 이내 등록 → +8
+     *   7일 이내 등록 → +4
+     *
+     * ── 인기도 보너스 ──
+     *   조회수 상위 (>300) → +5
+     *   조회수 중위 (>150) → +3
+     */
+    private int[] calculateScore(Scholarship s, String major, List<String> keywords, LocalDate today) {
+        int personalScore = 0;
+        int bonusScore = 0;
 
-        // 1. 학과 매칭 → +30점
+        String title = nullSafe(s.getTitle()).toLowerCase();
+        String eligibility = nullSafe(s.getEligibility()).toLowerCase();
+        String basicSummary = nullSafe(s.getBasicSummary()).toLowerCase();
+        String detailSummary = nullSafe(s.getDetailSummary()).toLowerCase();
+        String content = nullSafe(s.getContent()).toLowerCase();
+
+        // ── 1. 학과 매칭 ──
         if (!major.isEmpty()) {
-            if (title.contains(major) || eligibility.contains(major)) {
-                score += 30;
+            String majorLower = major.toLowerCase();
+            if (eligibility.contains(majorLower) || content.contains(majorLower)) {
+                personalScore += 30;
+            } else if (title.contains(majorLower) || basicSummary.contains(majorLower)) {
+                personalScore += 20;
             }
         }
 
-        // 2. 키워드 매칭 → 키워드당 +20점
+        // ── 2. 키워드 매칭 (사용자가 회원가입 시 입력한 키워드) ──
         for (String kw : keywords) {
-            if (title.contains(kw) || eligibility.contains(kw) || basicSummary.contains(kw)) {
-                score += 20;
+            String kwLower = kw.toLowerCase();
+            if (eligibility.contains(kwLower)) {
+                // 자격 조건에 매칭 → 가장 높은 관련성
+                personalScore += 25;
+            } else if (title.contains(kwLower) || basicSummary.contains(kwLower)
+                    || detailSummary.contains(kwLower) || content.contains(kwLower)) {
+                personalScore += 15;
             }
         }
 
-        // 3. D-Day 가중치
+        // ── 3. 마감 긴급성 보너스 ──
         long dDay = parseDDay(s);
-        if (dDay >= 1 && dDay <= 7) {
-            score += 15;
+        if (dDay >= 0 && dDay <= 3) {
+            bonusScore += 15;
+        } else if (dDay >= 4 && dDay <= 7) {
+            bonusScore += 10;
         } else if (dDay >= 8 && dDay <= 14) {
-            score += 10;
-        } else if (dDay >= 15 && dDay <= 30) {
-            score += 5;
+            bonusScore += 5;
+        }
+        // 이미 마감된 공고는 추천하지 않음
+        if (dDay < 0 && dDay != -1) { // -1은 파싱 실패(상시)
+            return new int[]{0, 0};
         }
 
-        // 4. 조회수 가중치
-        int vc = s.getViewCount() != null ? s.getViewCount() : 0;
-        if (vc > 200) {
-            score += 10;
-        } else if (vc > 100) {
-            score += 5;
-        }
-
-        // 5. 최신성: 7일 이내 등록 → +10점
+        // ── 4. 최신성 보너스 ──
         if (s.getPostedAt() != null) {
             long daysSincePosted = ChronoUnit.DAYS.between(s.getPostedAt(), today);
-            if (daysSincePosted >= 0 && daysSincePosted <= 7) {
-                score += 10;
+            if (daysSincePosted >= 0 && daysSincePosted <= 3) {
+                bonusScore += 8;
+            } else if (daysSincePosted >= 0 && daysSincePosted <= 7) {
+                bonusScore += 4;
             }
         }
 
-        return score;
+        // ── 5. 인기도 보너스 (보조 지표) ──
+        int vc = s.getViewCount() != null ? s.getViewCount() : 0;
+        if (vc > 300) {
+            bonusScore += 5;
+        } else if (vc > 150) {
+            bonusScore += 3;
+        }
+
+        int total = personalScore + bonusScore;
+        return new int[]{total, personalScore};
     }
 
     /** applyPeriod에서 마감일까지 남은 일수를 파싱. 파싱 실패 시 -1 반환. */
@@ -172,13 +222,17 @@ public class ScholarshipController {
     public static class RecommendedScholarshipDto {
         private final Scholarship scholarship;
         private final int score;
+        private final int personalScore;
 
-        public RecommendedScholarshipDto(Scholarship scholarship, int score) {
+        public RecommendedScholarshipDto(Scholarship scholarship, int score, int personalScore) {
             this.scholarship = scholarship;
             this.score = score;
+            this.personalScore = personalScore;
         }
 
         public Scholarship getScholarship() { return scholarship; }
         public int getScore() { return score; }
+        public int getTotalScore() { return score; }
+        public int getPersonalScore() { return personalScore; }
     }
 }

@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -23,6 +24,22 @@ public class UserController {
         this.scholarshipRepository = scholarshipRepository;
     }
 
+    @GetMapping("/profile")
+    public ResponseEntity<?> getProfile(Authentication authentication) {
+        String email = authentication.getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new java.util.NoSuchElementException("사용자를 찾을 수 없습니다."));
+
+        Map<String, Object> profile = new HashMap<>();
+        profile.put("email", user.getEmail());
+        profile.put("name", user.getName());
+        profile.put("major", user.getMajor());
+        profile.put("keywords", user.getKeywords());
+        profile.put("role", user.getRole());
+        profile.put("createdAt", user.getCreatedAt());
+        return ResponseEntity.ok(profile);
+    }
+
     @PutMapping("/profile")
     public ResponseEntity<?> updateProfile(@RequestBody Map<String, String> payload, Authentication authentication) {
         String email = authentication.getName();
@@ -35,8 +52,14 @@ public class UserController {
                 user.setName(name.trim());
             }
         }
-        if (payload.containsKey("major")) user.setMajor(payload.get("major"));
-        if (payload.containsKey("keywords")) user.setKeywords(payload.get("keywords"));
+        if (payload.containsKey("major")) {
+            String major = payload.get("major");
+            user.setMajor(major != null ? major.trim() : "");
+        }
+        if (payload.containsKey("keywords")) {
+            String keywords = payload.get("keywords");
+            user.setKeywords(keywords != null ? keywords.trim() : "");
+        }
 
         User saved = userRepository.save(user);
         return ResponseEntity.ok(saved);
@@ -59,12 +82,26 @@ public class UserController {
         String email = authentication.getName();
         User user = userRepository.findByEmail(email).orElseThrow();
 
-        Long scholarshipId = Long.valueOf(payload.get("scholarshipId").toString());
+        Object scholarshipIdObj = payload.get("scholarshipId");
+        if (scholarshipIdObj == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "scholarshipId는 필수입니다."));
+        }
+
+        Long scholarshipId = Long.valueOf(scholarshipIdObj.toString());
         String actionType = payload.getOrDefault("actionType", "VIEW").toString();
 
-        Scholarship scholarship = scholarshipRepository.findById(scholarshipId).orElseThrow();
-        viewLogRepository.save(new UserViewLog(user, scholarship, actionType));
-
-        return ResponseEntity.ok(Map.of("message", "기록 완료"));
+        return scholarshipRepository.findById(scholarshipId)
+                .map(scholarship -> {
+                    viewLogRepository.save(new UserViewLog(user, scholarship, actionType));
+                    // 조회수 증가
+                    if ("VIEW".equalsIgnoreCase(actionType)) {
+                        scholarship.setViewCount(
+                                (scholarship.getViewCount() != null ? scholarship.getViewCount() : 0) + 1
+                        );
+                        scholarshipRepository.save(scholarship);
+                    }
+                    return ResponseEntity.ok(Map.of("message", "기록 완료"));
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 }

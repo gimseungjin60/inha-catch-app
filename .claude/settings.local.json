@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch:*)",
+      "Bash(git merge:*)",
+      "Bash(git stash:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(mysql --version)",
+      "Bash(java -version)",
+      "Bash(sc query:*)",
+      "Bash(C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe:*)",
+      "Bash(./gradlew bootRun)",
+      "Bash(curl -s http://localhost:8080/api/scholarships)",
+      "Bash(./gradlew compileJava)",
+      "Bash(curl -v http://localhost:8080/api/scholarships)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/api/scholarships)",
+      "Bash(curl:*)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill:*)",
+      "Bash(npm install:*)",
+      "Bash(npx expo:*)",
+      "WebFetch(domain:www.inhatc.ac.kr)",
+      "Bash('C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe' -u root -prootroot -e ':*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(grep -E \"\\\\.\\(tsx|ts|jsx|js\\)$\")",
+      "Bash(xargs grep:*)",
+      "Bash(npx tsc:*)",
+      "Bash(ipconfig)",
+      "Bash(findstr /C:\"IPv4\")",
+      "Bash(powershell:*)",
+      "Bash(where ngrok:*)",
+      "Bash(npm list:*)",
+      "Bash(where lt:*)",
+      "Bash(lt:*)",
+      "Bash(npx localtunnel:*)"
+    ]
+  }
+}

@@ -16,15 +16,24 @@ export interface Scholarship {
   dDay: string;
 }
 
-const getDDayStyle = (dDay: string) => {
-  if (dDay === '마감') return { bg: '#FEE2E2', text: '#DC2626', border: '#FECACA' };
-  if (dDay === 'D-Day') return { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' };
+const getDDayStyle = (dDay: string, isDark: boolean) => {
+  if (!dDay) return null;
+  if (dDay === '마감') return isDark
+    ? { bg: '#3B1515', text: '#F87171', border: '#7F1D1D' }
+    : { bg: '#FEE2E2', text: '#DC2626', border: '#FECACA' };
+  if (dDay === 'D-Day') return isDark
+    ? { bg: '#3B2E10', text: '#FBBF24', border: '#78350F' }
+    : { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' };
   if (dDay.startsWith('D-')) {
     const num = parseInt(dDay.replace('D-', ''), 10);
-    if (!isNaN(num) && num <= 3) return { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' };
-    if (!isNaN(num) && num <= 7) return { bg: '#DBEAFE', text: '#2563EB', border: '#BFDBFE' };
+    if (!isNaN(num) && num <= 3) return isDark
+      ? { bg: '#3B2E10', text: '#FBBF24', border: '#78350F' }
+      : { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' };
+    if (!isNaN(num) && num <= 7) return isDark
+      ? { bg: '#172554', text: '#60A5FA', border: '#1E3A8A' }
+      : { bg: '#DBEAFE', text: '#2563EB', border: '#BFDBFE' };
   }
-  return null; // 기본 스타일 사용
+  return null;
 };
 
 export default function ScholarshipCard({ item }: { item: Scholarship }) {
@@ -33,7 +42,7 @@ export default function ScholarshipCard({ item }: { item: Scholarship }) {
   const router = useRouter();
   const { toggleBookmark, isBookmarked } = useBookmarks();
   const bookmarked = isBookmarked(item.id);
-  const ddayStyle = getDDayStyle(item.dDay);
+  const ddayStyle = getDDayStyle(item.dDay, colorScheme === 'dark');
 
   return (
     <Pressable onPress={() => router.push(`/details/${item.id}` as any)}>

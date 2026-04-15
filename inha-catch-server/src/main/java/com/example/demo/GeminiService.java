@@ -40,7 +40,7 @@ public class GeminiService {
         "- 무료 API 한도를 아끼기 위해 불필요한 텍스트는 90% 이상 쳐내고 알맹이만 남겨.\n\n" +
         "분석할 공고문 텍스트:\n";
 
-    @Value("${gemini.api.key}")
+    @Value("${gemini.api.key:}")
     private String apiKey;
 
     private final RestTemplate restTemplate;
@@ -50,6 +50,9 @@ public class GeminiService {
     }
 
     public String generateSummary(String promptTemplate, String content) {
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            return "Gemini API 키가 설정되지 않았습니다.";
+        }
         if (content == null || content.trim().isEmpty()) {
             return "요약할 내용이 없습니다.";
         }
@@ -74,7 +77,7 @@ public class GeminiService {
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
         int retries = 0;
-        int maxRetries = 2;
+        int maxRetries = 3;
         while (retries < maxRetries) {
             try {
                 ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
@@ -91,17 +94,25 @@ public class GeminiService {
                 break;
             } catch (Exception e) {
                 String errMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-                if (errMsg.contains("429") || errMsg.contains("exhausted") || errMsg.contains("too many requests")) {
-                    log.warn("[Gemini API] 한도 초과(429) 감지. 60초 대기 후 재시도합니다... (시도 {})", retries + 1);
-                    try { Thread.sleep(60000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                boolean isTransient = errMsg.contains("429") || errMsg.contains("exhausted")
+                        || errMsg.contains("too many requests") || errMsg.contains("503")
+                        || errMsg.contains("timeout") || errMsg.contains("timed out");
+
+                if (isTransient && retries < maxRetries - 1) {
+                    long waitSec = (retries + 1) * 30L;
+                    log.warn("[Gemini API] 일시적 오류 감지. {}초 대기 후 재시도... (시도 {}/{})", waitSec, retries + 1, maxRetries);
+                    try { Thread.sleep(waitSec * 1000); } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return "[AI 요약 중단] 인터럽트 발생";
+                    }
                     retries++;
                 } else {
-                    log.error("Gemini API 호출 중 오류 발생: {}", e.getMessage());
-                    return "AI 요약 생성 중 오류가 발생했습니다.";
+                    log.error("Gemini API 호출 실패 (시도 {}/{}): {}", retries + 1, maxRetries, e.getMessage());
+                    return "[AI 요약 오류] " + (isTransient ? "API 일시적 오류" : e.getMessage());
                 }
             }
         }
-        
-        return "AI 요약을 생성하지 못했습니다.";
+
+        return "[AI 요약 실패] 최대 재시도 횟수 초과";
     }
 }

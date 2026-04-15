@@ -79,7 +79,8 @@ public class JwtUtil {
         try {
             if (isBlacklisted(token)) return false;
             Jws<Claims> claims = Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
-            return "access".equals(claims.getBody().get("type", String.class)) || claims.getBody().get("type") == null;
+            // access 토큰만 허용 (refresh 토큰이나 type이 없는 토큰 거부)
+            return "access".equals(claims.getBody().get("type", String.class));
         } catch (JwtException | IllegalArgumentException e) {
             return false;
         }

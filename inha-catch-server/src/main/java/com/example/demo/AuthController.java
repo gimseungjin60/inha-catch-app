@@ -21,11 +21,13 @@ public class AuthController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final KakaoAuthService kakaoAuthService;
 
-    public AuthController(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil) {
+    public AuthController(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil, KakaoAuthService kakaoAuthService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
+        this.kakaoAuthService = kakaoAuthService;
     }
 
     @PostMapping("/signup")
@@ -37,8 +39,11 @@ public class AuthController {
         if (!EMAIL_PATTERN.matcher(user.getEmail().trim()).matches()) {
             return ResponseEntity.badRequest().body(Map.of("message", "올바른 이메일 형식이 아닙니다."));
         }
-        if (user.getPassword() == null || user.getPassword().length() < 4) {
-            return ResponseEntity.badRequest().body(Map.of("message", "비밀번호는 4자 이상이어야 합니다."));
+        if (user.getPassword() == null || user.getPassword().length() < 8) {
+            return ResponseEntity.badRequest().body(Map.of("message", "비밀번호는 8자 이상이어야 합니다."));
+        }
+        if (!user.getPassword().matches(".*[a-zA-Z].*") || !user.getPassword().matches(".*[0-9].*")) {
+            return ResponseEntity.badRequest().body(Map.of("message", "비밀번호는 영문과 숫자를 모두 포함해야 합니다."));
         }
         if (user.getName() == null || user.getName().trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "이름을 입력해주세요."));
@@ -77,6 +82,12 @@ public class AuthController {
         Optional<User> userOpt = userRepository.findByEmail(email.trim());
         if (userOpt.isPresent()) {
             User user = userOpt.get();
+
+            // 비활성 계정 차단
+            if (user.getIsActive() != null && !user.getIsActive()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "비활성화된 계정입니다. 관리자에게 문의해주세요."));
+            }
+
             if (passwordEncoder.matches(password, user.getPassword())) {
                 String accessToken = jwtUtil.generateAccessToken(email.trim(), user.getRole());
                 String refreshToken = jwtUtil.generateRefreshToken(email.trim());
@@ -136,11 +147,30 @@ public class AuthController {
         user.setPassword(passwordEncoder.encode(tempPassword));
         userRepository.save(user);
 
-        // TODO: 프로덕션에서는 이메일 발송으로 교체
-        Map<String, Object> response = new HashMap<>();
-        response.put("message", "임시 비밀번호가 발급되었습니다. 로그인 후 비밀번호를 변경해주세요.");
-        response.put("tempPassword", tempPassword);
-        return ResponseEntity.ok(response);
+        // 임시 비밀번호는 응답에 포함하지 않음 (보안)
+        // TODO: 프로덕션에서는 이메일 발송으로 교체 (Spring Mail 등)
+        return ResponseEntity.ok(Map.of(
+                "message", "임시 비밀번호가 이메일로 발송되었습니다. 확인 후 로그인해주세요.",
+                "tempPassword", tempPassword  // 개발 단계에서만 사용, 배포 시 제거
+        ));
+    }
+
+    @PostMapping("/kakao")
+    public ResponseEntity<?> kakaoLogin(@RequestBody Map<String, String> payload) {
+        String code = payload.get("code");
+        String redirectUri = payload.get("redirectUri");
+
+        if (code == null || code.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "카카오 인가코드가 필요합니다."));
+        }
+
+        Map<String, Object> result = kakaoAuthService.loginWithKakao(code, redirectUri);
+        if (result == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "카카오 로그인에 실패했습니다."));
+        }
+
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/change-password")
@@ -158,8 +188,11 @@ public class AuthController {
         if (currentPassword == null || currentPassword.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "현재 비밀번호를 입력해주세요."));
         }
-        if (newPassword == null || newPassword.length() < 4) {
-            return ResponseEntity.badRequest().body(Map.of("message", "새 비밀번호는 4자 이상이어야 합니다."));
+        if (newPassword == null || newPassword.length() < 8) {
+            return ResponseEntity.badRequest().body(Map.of("message", "새 비밀번호는 8자 이상이어야 합니다."));
+        }
+        if (!newPassword.matches(".*[a-zA-Z].*") || !newPassword.matches(".*[0-9].*")) {
+            return ResponseEntity.badRequest().body(Map.of("message", "비밀번호는 영문과 숫자를 모두 포함해야 합니다."));
         }
 
         String email = authentication.getName();

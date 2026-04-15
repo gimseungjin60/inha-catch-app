@@ -2,7 +2,29 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const apiUrl = Platform.OS === 'android' ? 'http://10.0.2.2:8080' : 'http://localhost:8080';
+// ============================================================
+// API URL 설정
+// 배포/외부 테스트: TUNNEL_URL을 실제 터널 주소로 변경
+// 로컬 개발: null로 두면 자동 감지
+// ============================================================
+// 터널 사용 시: 'https://xxx.loca.lt' / 로컬 테스트: null
+const TUNNEL_URL: string | null = null;
+
+// 같은 Wi-Fi에서 테스트 시 PC IP 직접 지정 (ipconfig로 확인)
+const LOCAL_IP = '172.20.10.5';
+
+const getApiUrl = () => {
+  if (TUNNEL_URL) return TUNNEL_URL;
+
+  // 웹 브라우저에서 테스트 시 localhost 사용
+  if (Platform.OS === 'web') return `http://${LOCAL_IP}:8080`;
+  // Android 에뮬레이터
+  if (Platform.OS === 'android') return `http://${LOCAL_IP}:8080`;
+  // iOS
+  return `http://${LOCAL_IP}:8080`;
+};
+
+export const apiUrl = getApiUrl();
 
 // 인증 실패 시 로그인 화면으로 리다이렉트하기 위한 콜백
 let onAuthFailure: (() => void) | null = null;
@@ -13,6 +35,9 @@ export const setOnAuthFailure = (callback: () => void) => {
 const api = axios.create({
   baseURL: apiUrl,
   timeout: 15000,
+  headers: {
+    'Bypass-Tunnel-Reminder': 'true',
+  },
 });
 
 api.interceptors.request.use(
