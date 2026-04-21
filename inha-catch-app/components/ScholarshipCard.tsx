@@ -10,13 +10,15 @@ export interface Scholarship {
   id: number;
   type: 'scholarship' | 'contest';
   isRecommended: boolean;
+  recommendReasons?: string[];
   title: string;
   aiSummary: string[];
   tags: string[];
-  dDay: string;
+  dDay?: string;
 }
 
-const getDDayStyle = (dDay: string) => {
+const getDDayStyle = (dDay?: string) => {
+  if (!dDay) return null;
   if (dDay === '마감') return { bg: '#FEE2E2', text: '#DC2626', border: '#FECACA' };
   if (dDay === 'D-Day') return { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' };
   if (dDay.startsWith('D-')) {
@@ -36,7 +38,12 @@ export default function ScholarshipCard({ item }: { item: Scholarship }) {
   const ddayStyle = getDDayStyle(item.dDay);
 
   return (
-    <Pressable onPress={() => router.push(`/details/${item.id}` as any)}>
+    <Pressable
+      onPress={() => router.push(`/details/${item.id}` as any)}
+      accessibilityLabel={`${item.type === 'scholarship' ? '장학금' : '공모전'} ${item.title}, 상세 보기`}
+      accessibilityRole="button"
+      accessibilityHint="탭하면 상세 정보 화면으로 이동합니다"
+    >
       <View style={[styles.card, { backgroundColor: colors.cardBackground }]}>
         {/* Header */}
         <View style={styles.header}>
@@ -65,6 +72,9 @@ export default function ScholarshipCard({ item }: { item: Scholarship }) {
                     e.stopPropagation();
                     toggleBookmark(item.id);
                 }}
+                accessibilityLabel={bookmarked ? '북마크 해제' : '북마크 추가'}
+                accessibilityRole="button"
+                accessibilityState={{ selected: bookmarked }}
             >
               <Bookmark size={24} color={colors.primary} fill={bookmarked ? colors.primary : 'transparent'} />
             </Pressable>
@@ -72,6 +82,17 @@ export default function ScholarshipCard({ item }: { item: Scholarship }) {
 
           {/* Title */}
           <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
+
+          {/* 추천 이유 뱃지 */}
+          {item.isRecommended && item.recommendReasons && item.recommendReasons.length > 0 && (
+            <View style={styles.reasonsRow}>
+              {item.recommendReasons.slice(0, 3).map((reason, idx) => (
+                <View key={idx} style={[styles.reasonChip, { backgroundColor: colors.aiBoxBackground }]}>
+                  <Text style={[styles.reasonChipText, { color: colors.primary }]}>{reason}</Text>
+                </View>
+              ))}
+            </View>
+          )}
 
           {/* AI Summary Box */}
           <View style={[styles.aiBox, { backgroundColor: colors.aiBoxBackground }]}>
@@ -104,7 +125,7 @@ export default function ScholarshipCard({ item }: { item: Scholarship }) {
                  : { borderColor: colors.primary }
              ]}>
                 <Text style={[styles.ddayText, { color: ddayStyle ? ddayStyle.text : colors.primary }]}>
-                  {item.dDay}
+                  {item.dDay || '상시'}
                 </Text>
              </View>
           </View>
@@ -133,5 +154,8 @@ const styles = StyleSheet.create({
   tagText: { fontSize: 12, fontWeight: '500' },
   moreTags: { fontSize: 12, fontWeight: '500', marginLeft: 4 },
   ddayBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
-  ddayText: { fontSize: 12, fontWeight: 'bold' }
+  ddayText: { fontSize: 12, fontWeight: 'bold' },
+  reasonsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  reasonChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  reasonChipText: { fontSize: 11, fontWeight: '600' },
 });

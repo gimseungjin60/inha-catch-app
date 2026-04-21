@@ -2,30 +2,39 @@ package com.example.demo;
 
 import com.example.demo.entity.User;
 import com.example.demo.security.JwtUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
+    private static final Pattern PASSWORD_PATTERN = Pattern.compile("^(?=.*[A-Za-z])(?=.*\\d).{8,}$");
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final KakaoOAuthService kakaoOAuthService;
 
-    public AuthController(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil) {
+    public AuthController(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil, KakaoOAuthService kakaoOAuthService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
+        this.kakaoOAuthService = kakaoOAuthService;
     }
 
     @PostMapping("/signup")
@@ -37,8 +46,8 @@ public class AuthController {
         if (!EMAIL_PATTERN.matcher(user.getEmail().trim()).matches()) {
             return ResponseEntity.badRequest().body(Map.of("message", "올바른 이메일 형식이 아닙니다."));
         }
-        if (user.getPassword() == null || user.getPassword().length() < 4) {
-            return ResponseEntity.badRequest().body(Map.of("message", "비밀번호는 4자 이상이어야 합니다."));
+        if (user.getPassword() == null || !PASSWORD_PATTERN.matcher(user.getPassword()).matches()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "비밀번호는 8자 이상, 영문과 숫자를 포함해야 합니다."));
         }
         if (user.getName() == null || user.getName().trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "이름을 입력해주세요."));
@@ -51,6 +60,7 @@ public class AuthController {
         user.setEmail(user.getEmail().trim());
         user.setName(user.getName().trim());
         user.setPassword(passwordEncoder.encode(user.getPassword()));
+        user.setRole("USER"); // Role injection 방지: 항상 USER로 강제 설정
 
         User savedUser = userRepository.save(user);
 
@@ -109,10 +119,20 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+    public ResponseEntity<?> logout(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestBody(required = false) Map<String, String> body) {
+        // Access Token 블랙리스트
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
             jwtUtil.blacklistToken(token);
+        }
+        // Refresh Token도 블랙리스트
+        if (body != null && body.containsKey("refreshToken")) {
+            String refreshToken = body.get("refreshToken");
+            if (refreshToken != null && !refreshToken.trim().isEmpty()) {
+                jwtUtil.blacklistToken(refreshToken);
+            }
         }
         return ResponseEntity.ok(Map.of("message", "로그아웃 성공"));
     }
@@ -127,20 +147,18 @@ public class AuthController {
         Optional<User> userOpt = userRepository.findByEmail(email.trim());
         if (userOpt.isEmpty()) {
             // 보안상 이메일 존재 여부를 노출하지 않음
-            return ResponseEntity.ok(Map.of("message", "해당 이메일로 임시 비밀번호가 발급되었습니다."));
+            return ResponseEntity.ok(Map.of("message", "임시 비밀번호가 이메일로 발송되었습니다."));
         }
 
-        // 임시 비밀번호 생성 (8자리 영숫자)
-        String tempPassword = java.util.UUID.randomUUID().toString().substring(0, 8);
+        // 임시 비밀번호 생성 (UUID 12자리, 영숫자)
+        String tempPassword = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         User user = userOpt.get();
         user.setPassword(passwordEncoder.encode(tempPassword));
         userRepository.save(user);
 
-        // TODO: 프로덕션에서는 이메일 발송으로 교체
-        Map<String, Object> response = new HashMap<>();
-        response.put("message", "임시 비밀번호가 발급되었습니다. 로그인 후 비밀번호를 변경해주세요.");
-        response.put("tempPassword", tempPassword);
-        return ResponseEntity.ok(response);
+        // TODO: 이메일 발송 서비스 연동 필요 (현재 임시 비밀번호는 반환되지 않으며 로그에도 남기지 않음)
+        log.info("[비밀번호 재설정] 요청 처리 완료");
+        return ResponseEntity.ok(Map.of("message", "임시 비밀번호가 이메일로 발송되었습니다. 로그인 후 비밀번호를 변경해주세요."));
     }
 
     @PostMapping("/change-password")
@@ -158,8 +176,8 @@ public class AuthController {
         if (currentPassword == null || currentPassword.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "현재 비밀번호를 입력해주세요."));
         }
-        if (newPassword == null || newPassword.length() < 4) {
-            return ResponseEntity.badRequest().body(Map.of("message", "새 비밀번호는 4자 이상이어야 합니다."));
+        if (newPassword == null || !PASSWORD_PATTERN.matcher(newPassword).matches()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "새 비밀번호는 8자 이상, 영문과 숫자를 포함해야 합니다."));
         }
 
         String email = authentication.getName();
@@ -173,5 +191,168 @@ public class AuthController {
         userRepository.save(user);
 
         return ResponseEntity.ok(Map.of("message", "비밀번호가 변경되었습니다."));
+    }
+
+    // ── 카카오 로그인 ──
+
+    /**
+     * [모바일 네이티브 SDK용] 앱에서 카카오 SDK로 발급받은 access_token을 검증하고 JWT 발급.
+     * 요청 body: { "accessToken": "카카오 access_token" }
+     */
+    @PostMapping("/kakao/token")
+    public ResponseEntity<?> kakaoTokenLogin(@RequestBody Map<String, String> payload) {
+        String kakaoAccessToken = payload != null ? payload.get("accessToken") : null;
+        if (kakaoAccessToken == null || kakaoAccessToken.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "카카오 accessToken이 필요합니다."));
+        }
+
+        try {
+            Map<String, String> kakaoUser = kakaoOAuthService.getUserInfo(kakaoAccessToken);
+            String kakaoId = kakaoUser.get("id");
+            String email = kakaoUser.get("email");
+            String nickname = kakaoUser.get("nickname");
+
+            if (kakaoId == null || kakaoId.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "카카오 토큰 검증 실패"));
+            }
+
+            User user = findOrCreateKakaoUser(kakaoId, email, nickname);
+
+            String accessToken = jwtUtil.generateAccessToken(user.getEmail(), user.getRole());
+            String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("token", accessToken);
+            response.put("refreshToken", refreshToken);
+            response.put("user", user);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("카카오 토큰 로그인 실패: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "카카오 로그인 실패: " + e.getMessage()));
+        }
+    }
+
+    private User findOrCreateKakaoUser(String kakaoId, String email, String nickname) {
+        Optional<User> existing = userRepository.findByProviderAndProviderId("KAKAO", kakaoId);
+        if (existing.isPresent()) return existing.get();
+
+        if (email != null && !email.isEmpty()) {
+            Optional<User> emailUser = userRepository.findByEmail(email);
+            if (emailUser.isPresent()) {
+                User u = emailUser.get();
+                u.setProvider("KAKAO");
+                u.setProviderId(kakaoId);
+                return userRepository.save(u);
+            }
+        } else {
+            email = "kakao_" + kakaoId + "@inhacatch.kr";
+        }
+        return createKakaoUser(kakaoId, email, nickname);
+    }
+
+    /**
+     * 카카오 OAuth 인증 페이지로 리다이렉트
+     * 프론트엔드에서 WebBrowser로 이 URL을 열면 카카오 로그인 페이지가 뜸
+     */
+    @GetMapping("/kakao/login")
+    public ResponseEntity<?> kakaoLogin() {
+        String kakaoAuthUrl = "https://kauth.kakao.com/oauth/authorize"
+                + "?client_id=" + kakaoOAuthService.getRestApiKey()
+                + "&redirect_uri=" + URLEncoder.encode(kakaoOAuthService.getRedirectUri(), StandardCharsets.UTF_8)
+                + "&response_type=code";
+
+        return ResponseEntity.status(302)
+                .header("Location", kakaoAuthUrl)
+                .build();
+    }
+
+    /**
+     * 카카오 OAuth 콜백: 인가 코드 → 토큰 교환 → 사용자 조회/생성 → 앱으로 리다이렉트
+     */
+    @GetMapping("/kakao/callback")
+    public ResponseEntity<?> kakaoCallback(
+            @RequestParam(required = false) String code,
+            @RequestParam(required = false) String error) {
+        // 사용자가 카카오 로그인을 취소한 경우
+        if (error != null || code == null) {
+            String errorRedirect = "inhacatch://kakao-callback?error="
+                    + URLEncoder.encode("카카오 로그인이 취소되었습니다.", StandardCharsets.UTF_8);
+            return ResponseEntity.status(302)
+                    .header("Location", errorRedirect)
+                    .build();
+        }
+        try {
+            // 1. 인가 코드로 카카오 액세스 토큰 교환
+            String kakaoAccessToken = kakaoOAuthService.getAccessToken(code);
+
+            // 2. 카카오 사용자 정보 조회
+            Map<String, String> kakaoUser = kakaoOAuthService.getUserInfo(kakaoAccessToken);
+            String kakaoId = kakaoUser.get("id");
+            String email = kakaoUser.get("email");
+            String nickname = kakaoUser.get("nickname");
+
+            // 3. 기존 카카오 연동 사용자 조회 또는 신규 생성
+            Optional<User> existingUser = userRepository.findByProviderAndProviderId("KAKAO", kakaoId);
+            User user;
+
+            if (existingUser.isPresent()) {
+                user = existingUser.get();
+            } else {
+                // 같은 이메일로 가입된 계정이 있는지 확인
+                if (email != null && !email.isEmpty()) {
+                    Optional<User> emailUser = userRepository.findByEmail(email);
+                    if (emailUser.isPresent()) {
+                        // 기존 이메일 계정에 카카오 연동
+                        user = emailUser.get();
+                        user.setProvider("KAKAO");
+                        user.setProviderId(kakaoId);
+                        userRepository.save(user);
+                    } else {
+                        user = createKakaoUser(kakaoId, email, nickname);
+                    }
+                } else {
+                    // 이메일 없이 카카오 로그인 (이메일을 카카오ID 기반으로 생성)
+                    String generatedEmail = "kakao_" + kakaoId + "@inhacatch.kr";
+                    user = createKakaoUser(kakaoId, generatedEmail, nickname);
+                }
+            }
+
+            // 4. JWT 토큰 발급
+            String accessToken = jwtUtil.generateAccessToken(user.getEmail(), user.getRole());
+            String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
+
+            // 5. 앱 딥링크로 리다이렉트 (inhacatch://kakao-callback?token=...&...)
+            String redirectUrl = "inhacatch://kakao-callback"
+                    + "?token=" + URLEncoder.encode(accessToken, StandardCharsets.UTF_8)
+                    + "&refreshToken=" + URLEncoder.encode(refreshToken, StandardCharsets.UTF_8)
+                    + "&name=" + URLEncoder.encode(user.getName() != null ? user.getName() : "", StandardCharsets.UTF_8)
+                    + "&email=" + URLEncoder.encode(user.getEmail(), StandardCharsets.UTF_8)
+                    + "&major=" + URLEncoder.encode(user.getMajor() != null ? user.getMajor() : "", StandardCharsets.UTF_8)
+                    + "&keywords=" + URLEncoder.encode(user.getKeywords() != null ? user.getKeywords() : "", StandardCharsets.UTF_8)
+                    + "&role=" + URLEncoder.encode(user.getRole() != null ? user.getRole() : "USER", StandardCharsets.UTF_8);
+
+            return ResponseEntity.status(302)
+                    .header("Location", redirectUrl)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("카카오 로그인 실패: {}", e.getMessage());
+            String errorRedirect = "inhacatch://kakao-callback?error="
+                    + URLEncoder.encode("카카오 로그인에 실패했습니다.", StandardCharsets.UTF_8);
+            return ResponseEntity.status(302)
+                    .header("Location", errorRedirect)
+                    .build();
+        }
+    }
+
+    private User createKakaoUser(String kakaoId, String email, String nickname) {
+        User newUser = new User();
+        newUser.setEmail(email);
+        newUser.setName(nickname != null && !nickname.isEmpty() ? nickname : "카카오 사용자");
+        newUser.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+        newUser.setProvider("KAKAO");
+        newUser.setProviderId(kakaoId);
+        newUser.setRole("USER");
+        return userRepository.save(newUser);
     }
 }

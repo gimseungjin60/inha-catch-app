@@ -53,7 +53,14 @@ public class NotificationController {
 
     @PostMapping("/{id}/read")
     public ResponseEntity<?> markAsRead(@PathVariable Long id, Authentication authentication) {
+        User user = userRepository.findByEmail(authentication.getName()).orElseThrow();
         Notification notification = notificationRepository.findById(id).orElseThrow();
+
+        // 알림 소유자 검증
+        if (!notification.getUser().getId().equals(user.getId())) {
+            return ResponseEntity.status(403).body(Map.of("message", "해당 알림에 대한 권한이 없습니다."));
+        }
+
         notification.setRead(true);
         notificationRepository.save(notification);
         return ResponseEntity.ok(Map.of("message", "읽음 처리 완료"));

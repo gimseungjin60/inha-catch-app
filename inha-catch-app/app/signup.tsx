@@ -48,8 +48,8 @@ export default function SignupScreen() {
       showAlert('알림', '올바른 이메일 형식을 입력해주세요.');
       return;
     }
-    if (password.length < 4) {
-      showAlert('알림', '비밀번호는 4자 이상이어야 합니다.');
+    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      showAlert('알림', '비밀번호는 8자 이상, 영문과 숫자를 포함해야 합니다.');
       return;
     }
 
@@ -120,7 +120,7 @@ export default function SignupScreen() {
             </View>
             <TextInput
               style={[styles.input, { backgroundColor: colors.screenBackground, color: colors.text }]}
-              placeholder="비밀번호 입력"
+              placeholder="비밀번호 (8자 이상, 영문+숫자)"
               placeholderTextColor={colors.textSecondary}
               secureTextEntry
               value={password}

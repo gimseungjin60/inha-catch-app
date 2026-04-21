@@ -7,6 +7,8 @@ import api from '@/api/axios';
 import { useColorScheme } from '@/components/useColorScheme';
 import { Mail, Lock, ChevronLeft } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { kakaoLoginNative } from '@/lib/kakao';
+import { registerFcmToken } from '@/lib/fcm';
 
 const showAlert = (title: string, msg: string) => {
   Platform.OS === 'web' ? window.alert(msg) : Alert.alert(title, msg);
@@ -24,6 +26,43 @@ export default function LoginScreen() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [isResetting, setIsResetting] = useState(false);
+  const [isKakaoLoading, setIsKakaoLoading] = useState(false);
+
+  const handleKakaoLogin = async () => {
+    setIsKakaoLoading(true);
+    try {
+      const kakaoAccessToken = await kakaoLoginNative();
+      if (!kakaoAccessToken) {
+        showAlert('카카오 로그인 취소', '로그인이 취소되었거나 실패했습니다.');
+        return;
+      }
+
+      const res = await api.post('/api/auth/kakao/token', { accessToken: kakaoAccessToken });
+      const { token, refreshToken, user } = res.data;
+
+      await AsyncStorage.setItem('@jwt_token', token);
+      await AsyncStorage.setItem('@refresh_token', refreshToken);
+      await updateProfile({
+        ...profile,
+        name: user?.name || '',
+        major: user?.major || '',
+        grade: user?.grade || '',
+        keywords: user?.keywords ? String(user.keywords).split(',').filter(Boolean) : [],
+        isLoggedIn: true,
+        role: user?.role || 'USER',
+      });
+
+      // FCM 토큰 등록 (실패해도 로그인은 계속)
+      registerFcmToken().catch(() => {});
+
+      router.replace('/(tabs)');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || '카카오 로그인 중 오류가 발생했습니다.';
+      showAlert('카카오 로그인 실패', msg);
+    } finally {
+      setIsKakaoLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -50,6 +89,9 @@ export default function LoginScreen() {
         role: res.data.user.role || 'USER',
       });
 
+      // FCM 토큰 등록 (실패해도 로그인 계속)
+      registerFcmToken().catch(() => {});
+
       router.replace('/(tabs)');
     } catch (err: any) {
       const msg = err.response?.data?.message || '이메일 혹은 비밀번호를 확인해주세요.';
@@ -67,12 +109,7 @@ export default function LoginScreen() {
     setIsResetting(true);
     try {
       const res = await api.post('/api/auth/reset-password', { email: resetEmail.trim() });
-      const tempPw = res.data.tempPassword;
-      if (tempPw) {
-        showAlert('임시 비밀번호 발급', `임시 비밀번호: ${tempPw}\n\n로그인 후 반드시 비밀번호를 변경해주세요.`);
-      } else {
-        showAlert('완료', res.data.message || '처리되었습니다.');
-      }
+      showAlert('완료', res.data.message || '임시 비밀번호가 발급되었습니다.');
       setShowResetModal(false);
       setResetEmail('');
     } catch (err: any) {
@@ -135,6 +172,29 @@ export default function LoginScreen() {
                 <ActivityIndicator color="white" />
               ) : (
                 <Text style={styles.loginBtnText}>로그인</Text>
+              )}
+            </Pressable>
+
+            {/* 구분선 */}
+            <View style={styles.dividerRow}>
+              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+              <Text style={[styles.dividerText, { color: colors.textSecondary }]}>또는</Text>
+              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+            </View>
+
+            {/* 카카오 로그인 버튼 */}
+            <Pressable
+              style={[styles.kakaoBtn, { opacity: isKakaoLoading ? 0.6 : 1 }]}
+              onPress={handleKakaoLogin}
+              disabled={isKakaoLoading}
+            >
+              {isKakaoLoading ? (
+                <ActivityIndicator color="#3C1E1E" />
+              ) : (
+                <>
+                  <Text style={styles.kakaoIcon}>💬</Text>
+                  <Text style={styles.kakaoBtnText}>카카오로 시작하기</Text>
+                </>
               )}
             </Pressable>
 
@@ -221,6 +281,25 @@ const styles = StyleSheet.create({
   },
   loginBtnText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
   footerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  dividerLine: { flex: 1, height: 1 },
+  dividerText: { marginHorizontal: 16, fontSize: 14 },
+  kakaoBtn: {
+    height: 56,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    backgroundColor: '#FEE500',
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  kakaoIcon: { fontSize: 20, marginRight: 8 },
+  kakaoBtnText: { color: '#3C1E1E', fontSize: 17, fontWeight: 'bold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalContent: { width: '100%', borderRadius: 20, padding: 24 },
   modalTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 8 },
