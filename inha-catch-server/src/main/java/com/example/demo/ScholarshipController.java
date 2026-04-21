@@ -11,8 +11,6 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @RestController
@@ -81,8 +79,8 @@ public class ScholarshipController {
 
         List<RecommendedScholarshipDto> result = all.stream()
                 .map(s -> {
-                    int score = calculateScore(s, majorTrimmed, keywordList, today);
-                    return new RecommendedScholarshipDto(s, score);
+                    ScoreResult sr = calculateScore(s, majorTrimmed, keywordList, today);
+                    return new RecommendedScholarshipDto(s, sr.score, sr.reasons);
                 })
                 .filter(dto -> dto.getScore() > 0)
                 .sorted(Comparator.comparingInt(RecommendedScholarshipDto::getScore).reversed())
@@ -92,8 +90,9 @@ public class ScholarshipController {
         return ResponseEntity.ok(result);
     }
 
-    private int calculateScore(Scholarship s, String major, List<String> keywords, LocalDate today) {
+    private ScoreResult calculateScore(Scholarship s, String major, List<String> keywords, LocalDate today) {
         int score = 0;
+        List<String> reasons = new ArrayList<>();
         String title = nullSafe(s.getTitle());
         String eligibility = nullSafe(s.getEligibility());
         String basicSummary = nullSafe(s.getBasicSummary());
@@ -102,6 +101,7 @@ public class ScholarshipController {
         if (!major.isEmpty()) {
             if (title.contains(major) || eligibility.contains(major)) {
                 score += 30;
+                reasons.add("🎯 " + major + " 학과 일치");
             }
         }
 
@@ -109,6 +109,7 @@ public class ScholarshipController {
         for (String kw : keywords) {
             if (title.contains(kw) || eligibility.contains(kw) || basicSummary.contains(kw)) {
                 score += 20;
+                reasons.add("🔑 '" + kw + "' 관심사");
             }
         }
 
@@ -116,6 +117,7 @@ public class ScholarshipController {
         long dDay = parseDDay(s);
         if (dDay >= 1 && dDay <= 7) {
             score += 15;
+            reasons.add("⏰ 마감 D-" + dDay);
         } else if (dDay >= 8 && dDay <= 14) {
             score += 10;
         } else if (dDay >= 15 && dDay <= 30) {
@@ -126,6 +128,7 @@ public class ScholarshipController {
         int vc = s.getViewCount() != null ? s.getViewCount() : 0;
         if (vc > 200) {
             score += 10;
+            reasons.add("🔥 인기 공고");
         } else if (vc > 100) {
             score += 5;
         }
@@ -135,32 +138,24 @@ public class ScholarshipController {
             long daysSincePosted = ChronoUnit.DAYS.between(s.getPostedAt(), today);
             if (daysSincePosted >= 0 && daysSincePosted <= 7) {
                 score += 10;
+                reasons.add("✨ 최근 등록");
             }
         }
 
-        return score;
+        return new ScoreResult(score, reasons);
+    }
+
+    private static class ScoreResult {
+        final int score;
+        final List<String> reasons;
+        ScoreResult(int score, List<String> reasons) { this.score = score; this.reasons = reasons; }
     }
 
     /** applyPeriod에서 마감일까지 남은 일수를 파싱. 파싱 실패 시 -1 반환. */
     private long parseDDay(Scholarship s) {
-        if (s.getApplyPeriod() == null || s.getApplyPeriod().trim().isEmpty()) {
-            return -1;
-        }
-        try {
-            Matcher m = Pattern.compile("(\\d{4})[./-](\\d{2})[./-](\\d{2})").matcher(s.getApplyPeriod());
-            String lastDateStr = null;
-            while (m.find()) {
-                lastDateStr = m.group();
-            }
-            if (lastDateStr != null) {
-                lastDateStr = lastDateStr.replaceAll("[./]", "-");
-                LocalDate endDate = LocalDate.parse(lastDateStr);
-                return ChronoUnit.DAYS.between(LocalDate.now(), endDate);
-            }
-        } catch (Exception e) {
-            // ignore
-        }
-        return -1;
+        LocalDate endDate = Scholarship.parseLatestDate(s.getApplyPeriod());
+        if (endDate == null) return -1;
+        return ChronoUnit.DAYS.between(LocalDate.now(), endDate);
     }
 
     private String nullSafe(String s) {
@@ -172,13 +167,16 @@ public class ScholarshipController {
     public static class RecommendedScholarshipDto {
         private final Scholarship scholarship;
         private final int score;
+        private final List<String> reasons;
 
-        public RecommendedScholarshipDto(Scholarship scholarship, int score) {
+        public RecommendedScholarshipDto(Scholarship scholarship, int score, List<String> reasons) {
             this.scholarship = scholarship;
             this.score = score;
+            this.reasons = reasons;
         }
 
         public Scholarship getScholarship() { return scholarship; }
         public int getScore() { return score; }
+        public List<String> getReasons() { return reasons; }
     }
 }

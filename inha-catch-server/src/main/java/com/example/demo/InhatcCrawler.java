@@ -4,6 +4,8 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -16,15 +18,30 @@ import java.util.regex.Pattern;
 
 public class InhatcCrawler {
 
+    private static final Logger log = LoggerFactory.getLogger(InhatcCrawler.class);
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy.MM.dd");
     private static final Pattern ARTICLE_ID_PATTERN = Pattern.compile("/(\\d+)/artclView\\.do");
     private static final Pattern APPLY_PERIOD_PATTERN = Pattern.compile("(신청\\s*기간[:：]?\\s*[^\\n]+)");
     private static final Pattern ELIGIBILITY_PATTERN = Pattern.compile("(지원\\s*대상[:：]?\\s*[^\\n]+)");
     private static final Pattern AMOUNT_PATTERN = Pattern.compile("(장학\\s*금액[:：]?\\s*[^\\n]+)");
 
+    // 날짜 파싱 집계 (crawlAllPages 호출 단위로 리셋)
+    private int dateParseSuccess = 0;
+    private int dateParseFail = 0;
+    private String firstFailSample = null;
+
     public List<ScholarshipDto> crawlAllPages(String boardId) throws Exception {
         List<ScholarshipDto> result = new ArrayList<>();
         Set<String> visitedLinks = new HashSet<>();
+
+        // 올해(currentYear)와 전년도(currentYear-1)까지만 수집. 2026년엔 2025·2026.
+        int cutoffYear = LocalDate.now().getYear() - 1;
+
+        // 집계 카운터 리셋
+        dateParseSuccess = 0;
+        dateParseFail = 0;
+        firstFailSample = null;
+        log.info("[날짜 파싱] board={} 시작...", boardId);
 
         int page = 1;
         while (true) {
@@ -61,13 +78,13 @@ public class InhatcCrawler {
                 String author = textOrEmpty(row.selectFirst("td:nth-child(4)"));
                 LocalDate postedAt = parseDate(textOrEmpty(row.selectFirst("td:nth-child(5)")));
                 
-                if (postedAt != null && postedAt.getYear() < 2025) {
+                if (postedAt != null && postedAt.getYear() < cutoffYear) {
                     if (!isNotice) {
-                        System.out.println("2024년도 이하 일반 데이터 발견. 크롤링을 종료합니다.");
+                        log.info("[{}년 이전] 일반 데이터 발견. 크롤링 종료. ({})", cutoffYear, title);
                         stopCrawling = true;
                         break;
                     } else {
-                        System.out.println("2024년도 이하 공지사항 발견. 스킵합니다.");
+                        log.debug("[{}년 이전] 공지사항 스킵. ({})", cutoffYear, title);
                         continue;
                     }
                 }
@@ -92,6 +109,15 @@ public class InhatcCrawler {
             }
             page++;
         }
+
+        // 날짜 파싱 집계 한 줄로
+        String summary = "[날짜 파싱 결과] board=" + boardId
+                + " 성공=" + dateParseSuccess
+                + " 실패=" + dateParseFail;
+        if (dateParseFail > 0 && firstFailSample != null) {
+            summary += " (실패 샘플: '" + firstFailSample + "')";
+        }
+        log.info(summary);
 
         return result;
     }
@@ -122,7 +148,7 @@ public class InhatcCrawler {
             dto.setApplyPeriod(null);
             dto.setEligibility(null);
             dto.setAmountInfo(null);
-            System.out.println("[WARN] 본문 추출 실패: " + dto.getLink());
+            log.warn("본문 추출 실패: {}", dto.getLink());
             return;
         }
 
@@ -158,9 +184,9 @@ public class InhatcCrawler {
         dto.setContent(finalContent);
 
         if (finalContent.isEmpty()) {
-            System.out.println("[WARN] 본문 비어 있음: " + dto.getLink());
+            log.warn("본문 비어 있음: {}", dto.getLink());
         } else {
-            System.out.println("[OK] 본문 길이: " + finalContent.length() + " / " + dto.getLink());
+            log.debug("본문 길이: {} / {}", finalContent.length(), dto.getLink());
         }
 
         List<AttachmentDto> attachmentList = new ArrayList<>();
@@ -218,15 +244,20 @@ public class InhatcCrawler {
     }
 
     private LocalDate parseDate(String value) {
-        if (value == null || value.trim().isEmpty()) return null;
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
         try {
             String clean = value.replace("-", ".").replace("/", ".").trim();
             if (clean.matches("^\\d{2}\\.\\d{2}\\.\\d{2}$")) {
                 clean = "20" + clean;
             }
-            return LocalDate.parse(clean, DateTimeFormatter.ofPattern("yyyy.MM.dd"));
+            LocalDate parsed = LocalDate.parse(clean, DateTimeFormatter.ofPattern("yyyy.MM.dd"));
+            dateParseSuccess++;
+            return parsed;
         } catch (Exception ignored) {
-            System.out.println("날짜 파싱 실패: " + value);
+            dateParseFail++;
+            if (firstFailSample == null) firstFailSample = value;
             return null;
         }
     }

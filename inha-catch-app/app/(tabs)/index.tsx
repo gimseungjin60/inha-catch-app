@@ -22,7 +22,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const mapScholarship = (d: any, recIds: Set<number>): Scholarship => {
+  const mapScholarship = (d: any, recIds: Set<number>, reasonsMap: Map<number, string[]>): Scholarship => {
     const tags = [];
     if (d.title.includes('공모전')) tags.push('#공모전');
     else tags.push('#장학금');
@@ -42,6 +42,7 @@ export default function HomeScreen() {
       id: d.id,
       type: d.title.includes('공모전') ? 'contest' : 'scholarship',
       isRecommended: recIds.has(d.id),
+      recommendReasons: reasonsMap.get(d.id),
       title: d.title,
       aiSummary: parsedAiSummary,
       tags: tags.length ? tags : ['#인하대'],
@@ -66,9 +67,14 @@ export default function HomeScreen() {
         const recIds = new Set<number>(
           (recRes.data || []).map((r: any) => r.scholarship?.id ?? r.id).filter(Boolean)
         );
+        const reasonsMap = new Map<number, string[]>();
+        (recRes.data || []).forEach((r: any) => {
+          const sid = r.scholarship?.id ?? r.id;
+          if (sid && Array.isArray(r.reasons)) reasonsMap.set(sid, r.reasons);
+        });
 
         const rawData = allRes.data.content || allRes.data;
-        const mapped: Scholarship[] = rawData.map((d: any) => mapScholarship(d, recIds));
+        const mapped: Scholarship[] = rawData.map((d: any) => mapScholarship(d, recIds, reasonsMap));
 
         mapped.sort((a, b) => {
           if (a.isRecommended && !b.isRecommended) return -1;
@@ -122,8 +128,24 @@ export default function HomeScreen() {
     </View>
   );
 
+  const SkeletonCard = () => (
+    <View style={[styles.skeletonCard, { backgroundColor: colors.cardBackground }]}>
+      <View style={styles.skeletonRow}>
+        <View style={[styles.skeletonPill, { backgroundColor: colors.tagBackground, width: 60 }]} />
+        <View style={[styles.skeletonPill, { backgroundColor: colors.tagBackground, width: 40 }]} />
+      </View>
+      <View style={[styles.skeletonLine, { backgroundColor: colors.tagBackground, width: '90%', marginTop: 12 }]} />
+      <View style={[styles.skeletonLine, { backgroundColor: colors.tagBackground, width: '60%', marginTop: 6 }]} />
+      <View style={[styles.skeletonBox, { backgroundColor: colors.tagBackground, marginTop: 16 }]} />
+    </View>
+  );
+
   const ListEmpty = () => {
-    if (loading) return <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />;
+    if (loading) return (
+      <View>
+        {[0, 1, 2, 3].map(i => <SkeletonCard key={i} />)}
+      </View>
+    );
     if (error) return (
       <View style={{ alignItems: 'center', marginTop: 40 }}>
         <Text style={{ color: colors.textSecondary, fontSize: 15, marginBottom: 16 }}>{error}</Text>
@@ -235,5 +257,10 @@ const styles = StyleSheet.create({
   },
   listTitle: { fontSize: 18, fontWeight: 'bold' },
   countBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 },
-  countText: { fontSize: 12, fontWeight: '600' }
+  countText: { fontSize: 12, fontWeight: '600' },
+  skeletonCard: { borderRadius: 16, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
+  skeletonRow: { flexDirection: 'row', gap: 8 },
+  skeletonPill: { height: 18, borderRadius: 9 },
+  skeletonLine: { height: 14, borderRadius: 4 },
+  skeletonBox: { height: 80, borderRadius: 12 },
 });

@@ -7,6 +7,9 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { setOnAuthFailure } from '@/api/axios';
+import { initKakao } from '@/lib/kakao';
+import { initFcm } from '@/lib/fcm';
+import { initSentry } from '@/lib/sentry';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -30,6 +33,13 @@ export default function RootLayout() {
   useEffect(() => {
     if (error) throw error;
   }, [error]);
+
+  // 네이티브 SDK 초기화 (prebuild 후 실기기/시뮬레이터에서만 동작. Expo Go는 무시)
+  useEffect(() => {
+    initSentry();
+    initKakao();
+    initFcm();
+  }, []);
 
   useEffect(() => {
     if (loaded) {
@@ -72,6 +82,7 @@ function RootLayoutNav() {
           <Stack>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="admin" options={{ headerShown: false }} />
+            <Stack.Screen name="legal" options={{ headerShown: false }} />
             <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
           </Stack>
         </ThemeProvider>

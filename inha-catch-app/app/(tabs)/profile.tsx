@@ -72,8 +72,8 @@ export default function ProfileScreen() {
       showAlert('알림', '현재 비밀번호를 입력해주세요.');
       return;
     }
-    if (newPassword.length < 4) {
-      showAlert('알림', '새 비밀번호는 4자 이상이어야 합니다.');
+    if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      showAlert('알림', '새 비밀번호는 8자 이상, 영문과 숫자를 포함해야 합니다.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -100,10 +100,11 @@ export default function ProfileScreen() {
   const executeLogout = async () => {
     try {
       if (profile.isLoggedIn) {
-        await api.post('/api/auth/logout');
+        const refreshToken = await AsyncStorage.getItem('@refresh_token');
+        await api.post('/api/auth/logout', { refreshToken });
       }
-    } catch (err) {
-      console.log('로그아웃 서버 처리 오류 무시', err);
+    } catch {
+      // 서버 로그아웃 실패해도 로컬 세션은 정리한다.
     }
     await AsyncStorage.multiRemove(['@jwt_token', '@refresh_token', '@user_profile']);
     await updateProfile({ name: '', major: '', grade: '', keywords: [], isLoggedIn: false });
@@ -220,7 +221,7 @@ export default function ProfileScreen() {
               />
               <TextInput
                 style={[styles.input, { backgroundColor: colors.screenBackground, color: colors.text, marginBottom: 12 }]}
-                placeholder="새 비밀번호 (4자 이상)"
+                placeholder="새 비밀번호 (8자 이상, 영문+숫자)"
                 placeholderTextColor={colors.textSecondary}
                 secureTextEntry
                 value={newPassword}
@@ -262,9 +263,34 @@ export default function ProfileScreen() {
           </Pressable>
         )}
 
-        <Pressable onPress={handleLogout} style={styles.logoutBtn}>
+        <Pressable
+          onPress={handleLogout}
+          style={styles.logoutBtn}
+          accessibilityLabel="로그아웃"
+          accessibilityRole="button"
+        >
           <Text style={[styles.logoutBtnText, { color: colors.primary }]}>로그아웃</Text>
         </Pressable>
+
+        {/* 법적 고지 링크 */}
+        <View style={styles.legalRow}>
+          <Pressable
+            onPress={() => router.push({ pathname: '/legal', params: { type: 'privacy' } } as any)}
+            accessibilityLabel="개인정보처리방침 보기"
+            accessibilityRole="link"
+          >
+            <Text style={[styles.legalLink, { color: colors.textSecondary }]}>개인정보처리방침</Text>
+          </Pressable>
+          <Text style={[styles.legalDot, { color: colors.textSecondary }]}>·</Text>
+          <Pressable
+            onPress={() => router.push({ pathname: '/legal', params: { type: 'terms' } } as any)}
+            accessibilityLabel="이용약관 보기"
+            accessibilityRole="link"
+          >
+            <Text style={[styles.legalLink, { color: colors.textSecondary }]}>이용약관</Text>
+          </Pressable>
+        </View>
+        <Text style={[styles.versionText, { color: colors.textSecondary }]}>v1.0.0</Text>
       </ScrollView>
     </View>
   );
@@ -304,5 +330,9 @@ const styles = StyleSheet.create({
   },
   adminBtnText: { fontSize: 16, fontWeight: 'bold' },
   logoutBtn: { padding: 16, marginTop: 8, alignItems: 'center' },
-  logoutBtnText: { fontSize: 16, fontWeight: 'bold' }
+  logoutBtnText: { fontSize: 16, fontWeight: 'bold' },
+  legalRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 20, gap: 8 },
+  legalLink: { fontSize: 12, textDecorationLine: 'underline' },
+  legalDot: { fontSize: 12 },
+  versionText: { fontSize: 11, textAlign: 'center', marginTop: 8, opacity: 0.6 },
 });

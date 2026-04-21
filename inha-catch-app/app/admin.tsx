@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, Platform, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, RefreshCw, Database, Trash2, Cpu, AlertTriangle, Users, FileText } from 'lucide-react-native';
+import { ChevronLeft, RefreshCw, Database, Trash2, Cpu, AlertTriangle, Users, FileText, Globe, Award, Trophy, Archive } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -12,7 +12,7 @@ const showAlert = (title: string, msg: string) => {
   Platform.OS === 'web' ? window.alert(msg) : Alert.alert(title, msg);
 };
 
-type CrawlAction = 'save' | 'save-all' | 'backfill' | 'clear';
+type CrawlAction = 'save' | 'save-all' | 'backfill' | 'clear' | 'purge-outdated' | 'external' | 'external/wevity' | 'external/thinkcontest';
 
 export default function AdminScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -53,13 +53,17 @@ export default function AdminScreen() {
   };
 
   const executeCrawlAction = async (action: CrawlAction, label: string) => {
-    if (action === 'clear') {
+    const destructive = action === 'clear' || action === 'purge-outdated';
+    if (destructive) {
+      const confirmMsg = action === 'clear'
+        ? '정말 전체 데이터를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.'
+        : '2024년 이하 과거 공고를 삭제합니다.\n현재 유효한(2025·2026) 공고는 유지됩니다.\n계속하시겠습니까?';
       const confirmed = Platform.OS === 'web'
-        ? window.confirm('정말 전체 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')
+        ? window.confirm(confirmMsg)
         : await new Promise<boolean>(resolve => {
-            Alert.alert('경고', '정말 전체 데이터를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.', [
+            Alert.alert('확인', confirmMsg, [
               { text: '취소', onPress: () => resolve(false) },
-              { text: '삭제', style: 'destructive', onPress: () => resolve(true) },
+              { text: '진행', style: 'destructive', onPress: () => resolve(true) },
             ]);
           });
       if (!confirmed) return;
@@ -68,7 +72,10 @@ export default function AdminScreen() {
     setRunningAction(action);
     addLog(`${label} 시작...`);
     try {
-      const res = await api.get(`/api/crawl/${action}`);
+      const isExternal = action.startsWith('external');
+      const res = await api.get(`/api/crawl/${action}`, {
+        timeout: isExternal ? 600000 : 120000,
+      });
       const msg = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
       addLog(`${label} 완료: ${msg}`);
       showAlert('완료', `${label}이(가) 완료되었습니다.`);
@@ -84,11 +91,15 @@ export default function AdminScreen() {
 
   if (profile.role !== 'ADMIN') return null;
 
-  const actions: { key: CrawlAction; label: string; desc: string; icon: any; color: string; danger?: boolean }[] = [
-    { key: 'save', label: '증분 크롤링', desc: '최신 공고만 수집', icon: RefreshCw, color: '#2962FF' },
-    { key: 'save-all', label: '전체 크롤링', desc: '전체 페이지 재수집', icon: Database, color: '#00897B' },
-    { key: 'backfill', label: 'AI 요약 생성', desc: '요약 없는 공고에 AI 요약 추가', icon: Cpu, color: '#7B1FA2' },
-    { key: 'clear', label: '데이터 전체 삭제', desc: '모든 장학금 데이터 삭제', icon: Trash2, color: '#D32F2F', danger: true },
+  const actions: { key: CrawlAction; label: string; desc: string; icon: any; color: string; danger?: boolean; group: 'internal' | 'external' | 'maintenance' }[] = [
+    { key: 'save', label: '증분 크롤링', desc: '인하공전 최신 공고만 수집', icon: RefreshCw, color: '#2962FF', group: 'internal' },
+    { key: 'save-all', label: '전체 크롤링', desc: '인하공전 전체 페이지 재수집', icon: Database, color: '#00897B', group: 'internal' },
+    { key: 'external', label: '외부 통합 크롤링', desc: '위비티 + 씽굿 한번에 수집', icon: Globe, color: '#1E88E5', group: 'external' },
+    { key: 'external/wevity', label: '위비티 크롤링', desc: '위비티 공모전/대외활동만 수집', icon: Award, color: '#F4511E', group: 'external' },
+    { key: 'external/thinkcontest', label: '씽굿 크롤링', desc: '씽굿 공모전만 수집', icon: Trophy, color: '#6D4C41', group: 'external' },
+    { key: 'backfill', label: 'AI 요약 생성', desc: '요약 없는 공고에 AI 요약 추가', icon: Cpu, color: '#7B1FA2', group: 'maintenance' },
+    { key: 'purge-outdated', label: '과거 공고 정리', desc: '2024년 이하 옛날 공고만 선별 삭제', icon: Archive, color: '#546E7A', group: 'maintenance' },
+    { key: 'clear', label: '데이터 전체 삭제', desc: '모든 장학금 데이터 삭제', icon: Trash2, color: '#D32F2F', danger: true, group: 'maintenance' },
   ];
 
   return (
@@ -124,30 +135,42 @@ export default function AdminScreen() {
         </View>
 
         {/* 크롤링 제어 */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>크롤링 제어</Text>
-        {actions.map((a) => {
-          const Icon = a.icon;
-          const isRunning = runningAction === a.key;
+        {(['internal', 'external', 'maintenance'] as const).map((group) => {
+          const groupActions = actions.filter(a => a.group === group);
+          if (groupActions.length === 0) return null;
+          const groupLabel =
+            group === 'internal' ? '교내 크롤링 (인하공전)' :
+            group === 'external' ? '외부 크롤링 (장학금/공모전)' :
+            '유지보수';
           return (
-            <Pressable
-              key={a.key}
-              style={[
-                styles.actionCard,
-                { backgroundColor: colors.cardBackground, opacity: runningAction && !isRunning ? 0.5 : 1 },
-                a.danger && { borderWidth: 1, borderColor: '#FFCDD2' }
-              ]}
-              onPress={() => executeCrawlAction(a.key, a.label)}
-              disabled={!!runningAction}
-            >
-              <View style={[styles.actionIconWrap, { backgroundColor: a.color + '18' }]}>
-                {isRunning ? <ActivityIndicator color={a.color} size={20} /> : <Icon size={20} color={a.color} />}
-              </View>
-              <View style={styles.actionContent}>
-                <Text style={[styles.actionTitle, { color: a.danger ? '#D32F2F' : colors.text }]}>{a.label}</Text>
-                <Text style={[styles.actionDesc, { color: colors.textSecondary }]}>{a.desc}</Text>
-              </View>
-              {isRunning && <Text style={{ color: a.color, fontSize: 12, fontWeight: 'bold' }}>실행중</Text>}
-            </Pressable>
+            <View key={group}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>{groupLabel}</Text>
+              {groupActions.map((a) => {
+                const Icon = a.icon;
+                const isRunning = runningAction === a.key;
+                return (
+                  <Pressable
+                    key={a.key}
+                    style={[
+                      styles.actionCard,
+                      { backgroundColor: colors.cardBackground, opacity: runningAction && !isRunning ? 0.5 : 1 },
+                      a.danger && { borderWidth: 1, borderColor: '#FFCDD2' }
+                    ]}
+                    onPress={() => executeCrawlAction(a.key, a.label)}
+                    disabled={!!runningAction}
+                  >
+                    <View style={[styles.actionIconWrap, { backgroundColor: a.color + '18' }]}>
+                      {isRunning ? <ActivityIndicator color={a.color} size={20} /> : <Icon size={20} color={a.color} />}
+                    </View>
+                    <View style={styles.actionContent}>
+                      <Text style={[styles.actionTitle, { color: a.danger ? '#D32F2F' : colors.text }]}>{a.label}</Text>
+                      <Text style={[styles.actionDesc, { color: colors.textSecondary }]}>{a.desc}</Text>
+                    </View>
+                    {isRunning && <Text style={{ color: a.color, fontSize: 12, fontWeight: 'bold' }}>실행중</Text>}
+                  </Pressable>
+                );
+              })}
+            </View>
           );
         })}
 

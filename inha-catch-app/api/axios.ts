@@ -2,7 +2,12 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const apiUrl = Platform.OS === 'android' ? 'http://10.0.2.2:8080' : 'http://localhost:8080';
+// 우선순위: EXPO_PUBLIC_API_URL > 플랫폼 기본값
+// - iOS 시뮬레이터:   http://localhost:8080
+// - Android 에뮬레이터: http://10.0.2.2:8080
+// - 실기기/프로덕션:   EXPO_PUBLIC_API_URL 필수
+const defaultDevUrl = Platform.OS === 'android' ? 'http://10.0.2.2:8080' : 'http://localhost:8080';
+export const apiUrl = process.env.EXPO_PUBLIC_API_URL?.trim() || defaultDevUrl;
 
 // 인증 실패 시 로그인 화면으로 리다이렉트하기 위한 콜백
 let onAuthFailure: (() => void) | null = null;

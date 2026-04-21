@@ -38,4 +38,26 @@ public class CrawlingController {
     public String clearDatabase() {
         return crawlService.clearDatabase();
     }
+
+    @GetMapping("/purge-outdated")
+    public String purgeOutdated() {
+        return crawlService.purgeOutdated();
+    }
+
+    // ── 외부 크롤링 ──
+
+    @GetMapping("/external")
+    public String crawlAllExternal() throws Exception {
+        return crawlService.crawlAllExternal();
+    }
+
+    @GetMapping("/external/wevity")
+    public String crawlWevity() throws Exception {
+        return crawlService.crawlWevity();
+    }
+
+    @GetMapping("/external/thinkcontest")
+    public String crawlThinkContest() throws Exception {
+        return crawlService.crawlThinkContest();
+    }
 }

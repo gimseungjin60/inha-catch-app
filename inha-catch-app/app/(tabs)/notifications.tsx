@@ -51,7 +51,8 @@ export default function NotificationsScreen() {
     api.get('/api/scholarships?size=200')
       .then(res => {
         const rawData = res.data.content || res.data;
-        const mapped = rawData.map((d: any) => ({
+        type MappedItem = { id: number; type: 'contest' | 'scholarship'; title: string; dDay: string; postedAt: string | null };
+        const mapped: MappedItem[] = rawData.map((d: any) => ({
           id: d.id,
           type: d.title.includes('공모전') ? 'contest' : 'scholarship',
           title: d.title,
@@ -88,7 +89,7 @@ export default function NotificationsScreen() {
             type: 'new',
             title: '신규 공고',
             message: `새로운 ${item.type === 'scholarship' ? '장학금' : '공모전'}이 등록되었습니다: [${item.title}]`,
-            timeStr: getTimeAgo(item.postedAt)
+            timeStr: getTimeAgo(item.postedAt ?? undefined)
           });
         });
 
