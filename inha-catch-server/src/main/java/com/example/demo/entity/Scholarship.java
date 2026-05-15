@@ -113,24 +113,84 @@ public class Scholarship {
 
     @Transient
     public String getDDay() {
-        if (applyPeriod == null || applyPeriod.trim().isEmpty()) return "상시";
+        java.time.LocalDate endDate = parseLatestDate(applyPeriod);
+        if (endDate == null) return "상시";
+        long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), endDate);
+        if (daysBetween < 0) return "마감";
+        if (daysBetween == 0) return "D-Day";
+        return "D-" + daysBetween;
+    }
+
+    /**
+     * 문자열에서 마지막(가장 늦은) 날짜를 파싱. 다음 포맷 지원:
+     *   - 2026-05-15, 2026.5.1, 2026/5/1  (자리수 가변)
+     *   - 2026년 5월 15일
+     *   - 5월 15일 / 5.15 / 5/15 (연도 없는 경우 현재 연도 가정)
+     * 파싱 실패 시 null 반환.
+     */
+    public static java.time.LocalDate parseLatestDate(String text) {
+        if (text == null || text.trim().isEmpty()) return null;
+        java.util.List<java.time.LocalDate> candidates = new java.util.ArrayList<>();
+        int currentYear = java.time.LocalDate.now().getYear();
+
         try {
-            java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{4})[./-](\\d{2})[./-](\\d{2})").matcher(applyPeriod);
-            String lastDateStr = null;
-            while (m.find()) {
-                lastDateStr = m.group();
+            // 1) yyyy[-./ ]M[-./ ]d
+            java.util.regex.Matcher m1 = java.util.regex.Pattern
+                    .compile("(\\d{4})\\s*[-./]\\s*(\\d{1,2})\\s*[-./]\\s*(\\d{1,2})")
+                    .matcher(text);
+            while (m1.find()) {
+                try {
+                    candidates.add(java.time.LocalDate.of(
+                            Integer.parseInt(m1.group(1)),
+                            Integer.parseInt(m1.group(2)),
+                            Integer.parseInt(m1.group(3))));
+                } catch (Exception ignored) {}
             }
-            if (lastDateStr != null) {
-                lastDateStr = lastDateStr.replaceAll("[./]", "-");
-                java.time.LocalDate endDate = java.time.LocalDate.parse(lastDateStr);
-                long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), endDate);
-                if (daysBetween < 0) return "마감";
-                if (daysBetween == 0) return "D-Day";
-                return "D-" + daysBetween;
+
+            // 2) yyyy년 M월 d일
+            java.util.regex.Matcher m2 = java.util.regex.Pattern
+                    .compile("(\\d{4})\\s*년\\s*(\\d{1,2})\\s*월\\s*(\\d{1,2})\\s*일")
+                    .matcher(text);
+            while (m2.find()) {
+                try {
+                    candidates.add(java.time.LocalDate.of(
+                            Integer.parseInt(m2.group(1)),
+                            Integer.parseInt(m2.group(2)),
+                            Integer.parseInt(m2.group(3))));
+                } catch (Exception ignored) {}
             }
-        } catch (Exception e) {
-            // ignore parse errors
-        }
-        return "상시";
+
+            // 3) 연도 없는 M월 d일 → 올해로 가정
+            java.util.regex.Matcher m3 = java.util.regex.Pattern
+                    .compile("(?<!\\d)(\\d{1,2})\\s*월\\s*(\\d{1,2})\\s*일")
+                    .matcher(text);
+            while (m3.find()) {
+                try {
+                    candidates.add(java.time.LocalDate.of(
+                            currentYear,
+                            Integer.parseInt(m3.group(1)),
+                            Integer.parseInt(m3.group(2))));
+                } catch (Exception ignored) {}
+            }
+
+            // 4) 연도 없는 M[./]d → 올해로 가정 (단, yyyy 매칭 안 된 경우만)
+            if (candidates.isEmpty()) {
+                java.util.regex.Matcher m4 = java.util.regex.Pattern
+                        .compile("(?<!\\d)(\\d{1,2})\\s*[./]\\s*(\\d{1,2})(?!\\d)")
+                        .matcher(text);
+                while (m4.find()) {
+                    try {
+                        candidates.add(java.time.LocalDate.of(
+                                currentYear,
+                                Integer.parseInt(m4.group(1)),
+                                Integer.parseInt(m4.group(2))));
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception ignored) {}
+
+        if (candidates.isEmpty()) return null;
+        // 가장 늦은 날짜 (보통 마감일)
+        return java.util.Collections.max(candidates);
     }
 }

@@ -35,6 +35,7 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'com.fasterxml.jackson.core:jackson-databind'  // ThinkContestCrawler JSON 파싱용
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	implementation 'org.jsoup:jsoup:1.17.1'  // jsoup 추가
 	

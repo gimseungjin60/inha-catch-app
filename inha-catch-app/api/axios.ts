@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getJwtToken, getRefreshToken, setJwtToken, clearAuthTokens } from '@/lib/secureStorage';
 
 // ============================================================
 // API URL 설정
@@ -13,13 +14,16 @@ const TUNNEL_URL: string | null = null;
 // 같은 Wi-Fi에서 테스트 시 PC IP 직접 지정 (ipconfig로 확인)
 const LOCAL_IP = '172.20.10.5';
 
+// Android 에뮬레이터는 10.0.2.2가 PC의 localhost를 가리킴 (특수 IP)
+const ANDROID_EMULATOR_HOST = '10.0.2.2';
+
 const getApiUrl = () => {
   if (TUNNEL_URL) return TUNNEL_URL;
 
   // 웹 브라우저에서 테스트 시 localhost 사용
-  if (Platform.OS === 'web') return `http://${LOCAL_IP}:8080`;
-  // Android 에뮬레이터
-  if (Platform.OS === 'android') return `http://${LOCAL_IP}:8080`;
+  if (Platform.OS === 'web') return `http://localhost:8080`;
+  // Android 에뮬레이터 → PC localhost 자동 연결
+  if (Platform.OS === 'android') return `http://${ANDROID_EMULATOR_HOST}:8080`;
   // iOS
   return `http://${LOCAL_IP}:8080`;
 };
@@ -42,7 +46,7 @@ const api = axios.create({
 
 api.interceptors.request.use(
   async (config) => {
-    const token = await AsyncStorage.getItem('@jwt_token');
+    const token = await getJwtToken();
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
@@ -62,23 +66,25 @@ api.interceptors.response.use(
     if (error.response && error.response.status === 401 && !originalRequest._retry && !isAuthRequest) {
       originalRequest._retry = true;
       try {
-        const refreshToken = await AsyncStorage.getItem('@refresh_token');
+        const refreshToken = await getRefreshToken();
         if (refreshToken) {
           const res = await axios.post(`${apiUrl}/api/auth/refresh`, { refreshToken });
           if (res.status === 200) {
-            await AsyncStorage.setItem('@jwt_token', res.data.token);
+            await setJwtToken(res.data.token);
             originalRequest.headers['Authorization'] = `Bearer ${res.data.token}`;
             return api(originalRequest);
           }
         }
       } catch (e) {
         // 토큰 갱신 실패 → 전체 로그아웃 처리
-        await AsyncStorage.multiRemove(['@jwt_token', '@refresh_token', '@user_profile']);
+        await clearAuthTokens();
+        await AsyncStorage.removeItem('@user_profile');
         if (onAuthFailure) onAuthFailure();
         return Promise.reject(error);
       }
       // refreshToken이 없는 경우
-      await AsyncStorage.multiRemove(['@jwt_token', '@refresh_token', '@user_profile']);
+      await clearAuthTokens();
+      await AsyncStorage.removeItem('@user_profile');
       if (onAuthFailure) onAuthFailure();
     }
     return Promise.reject(error);

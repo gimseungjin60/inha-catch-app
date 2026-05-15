@@ -13,9 +13,12 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "kr.ac.inha.inhacatch"
     },
     "android": {
+      "package": "kr.ac.inha.inhacatch",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -32,10 +35,37 @@
     "plugins": [
       "expo-router",
       "expo-web-browser",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#2962FF",
+          "defaultChannel": "default"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24,
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35
+          }
+        }
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "kakaoRestApiKey": "ffbc340ed9a9d56c34bf15e1dfb9c46b",
+      "router": {},
+      "eas": {
+        "projectId": "47e14e12-59fb-4be2-8c70-b0f77681872c"
+      }
+    },
+    "owner": "gimseungjin60"
   }
 }

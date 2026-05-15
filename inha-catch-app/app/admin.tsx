@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, Platform, RefreshControl, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, RefreshCw, Database, Trash2, Cpu, AlertTriangle, Users, FileText, Bell, Bookmark, TrendingUp, Shield, UserX, UserCheck } from 'lucide-react-native';
+import { ChevronLeft, RefreshCw, Database, Trash2, Cpu, AlertTriangle, Users, FileText, Bell, Bookmark, TrendingUp, Shield, UserX, UserCheck, Globe, Award } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -12,7 +12,7 @@ const showAlert = (title: string, msg: string) => {
   Platform.OS === 'web' ? window.alert(msg) : Alert.alert(title, msg);
 };
 
-type CrawlAction = 'save' | 'save-all' | 'backfill' | 'clear';
+type CrawlAction = 'save' | 'save-all' | 'backfill' | 'clear' | 'external' | 'external/wevity' | 'external/thinkcontest';
 type TabType = 'dashboard' | 'users' | 'crawl';
 
 type UserItem = {
@@ -166,9 +166,12 @@ export default function AdminScreen() {
   if (profile.role !== 'ADMIN') return null;
 
   const actions: { key: CrawlAction; label: string; desc: string; icon: any; color: string; danger?: boolean }[] = [
-    { key: 'save', label: '증분 크롤링', desc: '최신 공고만 수집', icon: RefreshCw, color: '#2962FF' },
-    { key: 'save-all', label: '전체 크롤링', desc: '전체 페이지 재수집', icon: Database, color: '#00897B' },
+    { key: 'save', label: '증분 크롤링', desc: '최신 공고만 수집 (인하공전)', icon: RefreshCw, color: '#2962FF' },
+    { key: 'save-all', label: '전체 크롤링', desc: '전체 페이지 재수집 (인하공전)', icon: Database, color: '#00897B' },
     { key: 'backfill', label: 'AI 요약 생성', desc: '요약 없는 공고에 AI 요약 추가', icon: Cpu, color: '#7B1FA2' },
+    { key: 'external', label: '외부 일괄 크롤링', desc: '위비티 + 씽굿 공모전 동시 수집', icon: Globe, color: '#0277BD' },
+    { key: 'external/wevity', label: '위비티 크롤링', desc: 'wevity.com 공모전/대외활동', icon: Award, color: '#1565C0' },
+    { key: 'external/thinkcontest', label: '씽굿 크롤링', desc: 'thinkcontest.com 공모전', icon: Award, color: '#00796B' },
     { key: 'clear', label: '데이터 전체 삭제', desc: '모든 장학금 데이터 삭제', icon: Trash2, color: '#D32F2F', danger: true },
   ];
 

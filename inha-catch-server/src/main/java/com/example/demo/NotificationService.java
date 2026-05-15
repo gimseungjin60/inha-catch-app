@@ -1,8 +1,10 @@
 package com.example.demo;
 
 import com.example.demo.entity.Notification;
+import com.example.demo.entity.PushBatch;
 import com.example.demo.entity.Scholarship;
 import com.example.demo.entity.User;
+import com.example.demo.repository.PushBatchRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -10,10 +12,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -23,15 +27,89 @@ public class NotificationService {
     private final UserRepository userRepository;
     private final BookmarkRepository bookmarkRepository;
     private final FCMService fcmService;
+    private final PushBatchRepository pushBatchRepository;
 
     public NotificationService(NotificationRepository notificationRepository,
                                UserRepository userRepository,
                                BookmarkRepository bookmarkRepository,
-                               FCMService fcmService) {
+                               FCMService fcmService,
+                               PushBatchRepository pushBatchRepository) {
         this.notificationRepository = notificationRepository;
         this.userRepository = userRepository;
         this.bookmarkRepository = bookmarkRepository;
         this.fcmService = fcmService;
+        this.pushBatchRepository = pushBatchRepository;
+    }
+
+    /**
+     * 어드민이 일괄 알림 발송.
+     * @param segment 대상 세그먼트 (전체 사용자 / 특정 학과 구독자 / 관심 키워드 매칭 / 최근 30일 활성 사용자)
+     * @param title   알림 제목
+     * @param body    알림 본문
+     * @param deepLink 클릭 시 이동 경로 (선택)
+     */
+    @Transactional
+    public PushBatch sendBatchToSegment(String segment, String title, String body, String deepLink) {
+        List<User> targets = resolveSegmentTargets(segment);
+
+        Map<String, String> data = new HashMap<>();
+        data.put("type", "SYSTEM");
+        if (deepLink != null && !deepLink.isBlank()) {
+            data.put("deepLink", deepLink);
+        }
+
+        int delivered = 0;
+        for (User user : targets) {
+            // DB 저장 — 사용자 별 알림 row
+            Notification notification = new Notification(
+                    user, null, "SYSTEM",
+                    truncate(title, 150),
+                    truncate(body, 950)
+            );
+            notificationRepository.save(notification);
+
+            // FCM 발송 (토큰 있는 사용자만)
+            if (user.getFcmToken() != null && !user.getFcmToken().isBlank()) {
+                try {
+                    fcmService.sendToUser(user.getFcmToken(), title, body, data);
+                    delivered++;
+                } catch (Exception e) {
+                    log.warn("FCM 발송 실패 user={}: {}", user.getEmail(), e.getMessage());
+                }
+            }
+        }
+
+        PushBatch batch = new PushBatch(title, body, segment, deepLink,
+                targets.size(), delivered);
+        pushBatchRepository.save(batch);
+        log.info("일괄 알림 발송 완료: segment={} recipients={} delivered={}",
+                segment, targets.size(), delivered);
+        return batch;
+    }
+
+    private List<User> resolveSegmentTargets(String segment) {
+        List<User> activeUsers = userRepository.findByFcmTokenIsNotNullAndIsActiveTrue();
+        if (segment == null) return activeUsers;
+
+        switch (segment) {
+            case "특정 학과 구독자":
+                return activeUsers.stream()
+                        .filter(u -> u.getMajor() != null && !u.getMajor().isBlank())
+                        .collect(Collectors.toList());
+            case "관심 키워드 매칭":
+                return activeUsers.stream()
+                        .filter(u -> u.getKeywords() != null && !u.getKeywords().isBlank())
+                        .collect(Collectors.toList());
+            case "최근 30일 활성 사용자": {
+                LocalDateTime cutoff = LocalDateTime.now().minusDays(30);
+                return activeUsers.stream()
+                        .filter(u -> u.getCreatedAt() != null && u.getCreatedAt().isAfter(cutoff))
+                        .collect(Collectors.toList());
+            }
+            case "전체 사용자":
+            default:
+                return activeUsers;
+        }
     }
 
     /**
