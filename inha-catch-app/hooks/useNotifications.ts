@@ -1,10 +1,68 @@
-import { useEffect, useRef } from 'react';
-import { AppState, Platform } from 'react-native';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { AppState, Platform, Linking } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { useRouter } from 'expo-router';
 import api from '@/api/axios';
 import type { EventSubscription } from 'expo-notifications';
+
+export type NotificationPermissionStatus = 'granted' | 'denied' | 'undetermined' | 'unsupported';
+
+export async function getNotificationPermissionStatus(): Promise<NotificationPermissionStatus> {
+  if (isExpoGo) return 'unsupported';
+  if (!Device.isDevice) return 'unsupported';
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status === 'granted') return 'granted';
+    if (status === 'denied') return 'denied';
+    return 'undetermined';
+  } catch {
+    return 'undetermined';
+  }
+}
+
+export async function requestNotificationPermission(): Promise<NotificationPermissionStatus> {
+  if (isExpoGo) return 'unsupported';
+  if (!Device.isDevice) return 'unsupported';
+  try {
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status === 'granted') return 'granted';
+    if (status === 'denied') return 'denied';
+    return 'undetermined';
+  } catch {
+    return 'undetermined';
+  }
+}
+
+export function openAppNotificationSettings(): Promise<void> {
+  // Android는 시스템 설정 앱을, iOS도 동일하게 openSettings로 처리
+  return Linking.openSettings();
+}
+
+/**
+ * 알림 권한 상태를 추적하는 훅. 앱이 포그라운드로 복귀할 때마다 재확인.
+ */
+export function useNotificationPermission() {
+  const [status, setStatus] = useState<NotificationPermissionStatus>('undetermined');
+
+  const refresh = useCallback(async () => {
+    setStatus(await getNotificationPermissionStatus());
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
+
+  return { status, refresh };
+}
+
+// Expo Go에서는 SDK 53부터 Android 원격 푸시 미지원 → 토큰 등록 자체를 스킵
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 // 앱이 포그라운드에 있을 때 알림 표시 설정
 Notifications.setNotificationHandler({
@@ -68,8 +126,12 @@ export function useNotificationSetup(isLoggedIn: boolean) {
 }
 
 async function registerForPushNotifications(): Promise<string | null> {
+  if (isExpoGo) {
+    console.log('[FCM] Expo Go에서는 원격 푸시 미지원 (SDK 53+). Dev Build에서만 동작.');
+    return null;
+  }
   if (!Device.isDevice) {
-    console.log('푸시 알림은 실제 디바이스에서만 동작합니다.');
+    console.log('[FCM] 푸시 알림은 실제 디바이스/에뮬레이터에서만 동작합니다.');
     return null;
   }
 
@@ -83,7 +145,7 @@ async function registerForPushNotifications(): Promise<string | null> {
     }
 
     if (finalStatus !== 'granted') {
-      console.log('푸시 알림 권한이 거부되었습니다.');
+      console.log('[FCM] 푸시 알림 권한이 거부되었습니다.');
       return null;
     }
 
@@ -101,7 +163,7 @@ async function registerForPushNotifications(): Promise<string | null> {
     const tokenData = await Notifications.getDevicePushTokenAsync();
     return tokenData.data as string;
   } catch (error) {
-    console.error('푸시 토큰 등록 실패:', error);
+    console.error('[FCM] 푸시 토큰 등록 실패:', error);
     return null;
   }
 }

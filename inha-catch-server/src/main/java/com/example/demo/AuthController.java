@@ -2,6 +2,7 @@ package com.example.demo;
 
 import com.example.demo.entity.User;
 import com.example.demo.security.JwtUtil;
+import com.example.demo.security.PasswordPolicy;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -39,11 +40,9 @@ public class AuthController {
         if (!EMAIL_PATTERN.matcher(user.getEmail().trim()).matches()) {
             return ResponseEntity.badRequest().body(Map.of("message", "올바른 이메일 형식이 아닙니다."));
         }
-        if (user.getPassword() == null || user.getPassword().length() < 8) {
-            return ResponseEntity.badRequest().body(Map.of("message", "비밀번호는 8자 이상이어야 합니다."));
-        }
-        if (!user.getPassword().matches(".*[a-zA-Z].*") || !user.getPassword().matches(".*[0-9].*")) {
-            return ResponseEntity.badRequest().body(Map.of("message", "비밀번호는 영문과 숫자를 모두 포함해야 합니다."));
+        Optional<String> pwError = PasswordPolicy.validate(user.getPassword(), user.getEmail());
+        if (pwError.isPresent()) {
+            return ResponseEntity.badRequest().body(Map.of("message", pwError.get()));
         }
         if (user.getName() == null || user.getName().trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "이름을 입력해주세요."));
@@ -141,17 +140,17 @@ public class AuthController {
             return ResponseEntity.ok(Map.of("message", "해당 이메일로 임시 비밀번호가 발급되었습니다."));
         }
 
-        // 임시 비밀번호 생성 (8자리 영숫자)
-        String tempPassword = java.util.UUID.randomUUID().toString().substring(0, 8);
+        // 임시 비밀번호 생성 — 영숫자 + 특수문자 12자 (SecureRandom)
+        String tempPassword = PasswordPolicy.generateTempPassword(12);
         User user = userOpt.get();
         user.setPassword(passwordEncoder.encode(tempPassword));
         userRepository.save(user);
 
-        // 임시 비밀번호는 응답에 포함하지 않음 (보안)
-        // TODO: 프로덕션에서는 이메일 발송으로 교체 (Spring Mail 등)
+        // 운영 환경에서는 이메일 발송으로 교체하고 응답에서 tempPassword 제거 필요.
+        // Spring Mail + 인증된 SMTP 서버 사용 권장. 현재는 개발 편의상 응답에 포함.
         return ResponseEntity.ok(Map.of(
-                "message", "임시 비밀번호가 이메일로 발송되었습니다. 확인 후 로그인해주세요.",
-                "tempPassword", tempPassword  // 개발 단계에서만 사용, 배포 시 제거
+                "message", "임시 비밀번호가 발급되었습니다. 로그인 후 즉시 비밀번호를 변경해주세요.",
+                "tempPassword", tempPassword
         ));
     }
 
@@ -188,14 +187,13 @@ public class AuthController {
         if (currentPassword == null || currentPassword.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "현재 비밀번호를 입력해주세요."));
         }
-        if (newPassword == null || newPassword.length() < 8) {
-            return ResponseEntity.badRequest().body(Map.of("message", "새 비밀번호는 8자 이상이어야 합니다."));
-        }
-        if (!newPassword.matches(".*[a-zA-Z].*") || !newPassword.matches(".*[0-9].*")) {
-            return ResponseEntity.badRequest().body(Map.of("message", "비밀번호는 영문과 숫자를 모두 포함해야 합니다."));
-        }
 
         String email = authentication.getName();
+        Optional<String> pwError = PasswordPolicy.validate(newPassword, email);
+        if (pwError.isPresent()) {
+            return ResponseEntity.badRequest().body(Map.of("message", pwError.get()));
+        }
+
         User user = userRepository.findByEmail(email).orElseThrow();
 
         if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
