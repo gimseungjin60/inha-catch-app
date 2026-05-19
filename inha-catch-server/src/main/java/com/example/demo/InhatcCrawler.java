@@ -195,6 +195,78 @@ public class InhatcCrawler {
     }
 
     /**
+     * 취업정보 크롤링 (er/402 게시판)
+     * URL: /bbs/er/402/artclList.do?page={page}
+     * 컬럼 구조는 장학정보와 동일 (번호/제목/작성일/조회수/첨부)
+     */
+    public List<ScholarshipDto> crawlJobPages() throws Exception {
+        List<ScholarshipDto> result = new ArrayList<>();
+        Set<String> visitedLinks = new HashSet<>();
+
+        int page = 1;
+        while (true) {
+            String url = "https://www.inhatc.ac.kr/bbs/er/402/artclList.do?page=" + page;
+            Document doc = Jsoup.connect(url)
+                    .userAgent("Mozilla/5.0")
+                    .referrer("https://www.google.com")
+                    .timeout(15000)
+                    .get();
+
+            Elements rows = doc.select("table tbody tr");
+            if (rows.isEmpty()) break;
+
+            int added = 0;
+            boolean stopCrawling = false;
+
+            for (Element row : rows) {
+                Element titleElement = row.selectFirst("td:nth-child(2) a");
+                if (titleElement == null) continue;
+
+                String title = titleElement.text().trim();
+                String link = titleElement.absUrl("href");
+                if (link.isEmpty() || visitedLinks.contains(link)) continue;
+
+                Long articleId = extractArticleId(link);
+                if (articleId == null) continue;
+
+                LocalDate postedAt = parseDate(textOrEmpty(row.selectFirst("td:nth-child(3)")));
+                if (postedAt == null) {
+                    log.debug("[취업] 날짜 없는 게시글 스킵: {}", title);
+                    continue;
+                }
+
+                if (postedAt.getYear() < MIN_YEAR) {
+                    log.info("[취업] {}년도 이하 데이터 발견. 크롤링 종료: {}", MIN_YEAR - 1, title);
+                    stopCrawling = true;
+                    break;
+                }
+
+                String numberText = textOrEmpty(row.selectFirst("td:nth-child(1)"));
+                boolean isNotice = row.hasClass("notice") || numberText.contains("공지");
+                Integer viewCount = parseInt(textOrEmpty(row.selectFirst("td:nth-child(4)")));
+                boolean hasAttachment = !row.select("td:nth-child(5) img, td:nth-child(5) a, td:nth-child(5) i").isEmpty();
+
+                ScholarshipDto dto = new ScholarshipDto(articleId, title, link);
+                dto.setNotice(isNotice);
+                dto.setAuthor("");
+                dto.setPostedAt(postedAt);
+                dto.setViewCount(viewCount);
+                dto.setHasAttachment(hasAttachment);
+
+                result.add(dto);
+                visitedLinks.add(link);
+                added++;
+            }
+
+            if (stopCrawling || added == 0 || page >= 100) break;
+            page++;
+        }
+
+        log.info("[취업] 총 {}건 수집 완료", result.size());
+        return result;
+    }
+
+    /**
      * 기존 호환용: boardId별 크롤링
      */
     public List<ScholarshipDto> crawlAllPages(String boardId) throws Exception {

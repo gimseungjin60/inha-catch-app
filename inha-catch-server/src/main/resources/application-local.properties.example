@@ -30,6 +30,13 @@ kakao.redirect-uri=YOUR_KAKAO_REDIRECT_URI
 # https://aistudio.google.com/app/apikey 에서 발급
 gemini.api.key=YOUR_GEMINI_API_KEY
 
+# ── 잡알리오 OpenAPI (공공기관 채용정보) ───────────────────
+# https://www.data.go.kr/data/15125273/openapi.do 에서 활용신청 후 발급
+# 마이페이지 → 일반 인증키 (Base64, `==`로 끝남) 그대로 복사
+jobalio.api.key=YOUR_JOBALIO_SERVICE_KEY
+# 운영/장애 대비용 — 기본값(opendata.alio.go.kr) 그대로 사용 시 비워둬도 됨
+# jobalio.api.base-url=https://opendata.alio.go.kr
+
 # ── CORS ────────────────────────────────────────────────
 # 운영에선 정확한 도메인만. 로컬 개발은 wildcard 허용.
 cors.allowed-origins=http://localhost:*,http://10.0.2.2:*,http://127.0.0.1:*

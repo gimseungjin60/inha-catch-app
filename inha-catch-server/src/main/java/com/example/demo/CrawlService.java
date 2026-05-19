@@ -28,12 +28,14 @@ public class CrawlService {
     private final GeminiService geminiService;
     private final TransactionTemplate transactionTemplate;
     private final ApplicationEventPublisher eventPublisher;
+    private final JobAlioFetcher jobAlioFetcher;
 
-    public CrawlService(ScholarshipRepository repository, GeminiService geminiService, PlatformTransactionManager transactionManager, ApplicationEventPublisher eventPublisher) {
+    public CrawlService(ScholarshipRepository repository, GeminiService geminiService, PlatformTransactionManager transactionManager, ApplicationEventPublisher eventPublisher, JobAlioFetcher jobAlioFetcher) {
         this.repository = repository;
         this.geminiService = geminiService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.eventPublisher = eventPublisher;
+        this.jobAlioFetcher = jobAlioFetcher;
     }
 
     public List<ScholarshipDto> crawlAll() throws Exception {
@@ -56,6 +58,7 @@ public class CrawlService {
             crawler.crawlDetail(dto);
             dto.setSourceSite(SOURCE_SITE);
             dto.setBoardId("17");
+            dto.setCategory("SCHOLARSHIP");
             eventPublisher.publishEvent(new CrawlEvent(dto));
             publishedCount++;
         }
@@ -67,11 +70,32 @@ public class CrawlService {
             crawler.crawlDetail(dto);
             dto.setSourceSite(SOURCE_SITE);
             dto.setBoardId("contest");
+            dto.setCategory("CONTEST");
             eventPublisher.publishEvent(new CrawlEvent(dto));
             publishedCount++;
         }
 
-        return "전체 크롤링 수집: " + publishedCount + "건 (장학 " + scholarships.size() + " + 공모전 " + contests.size() + ") 비동기 파이프라인 대기열 추가 완료";
+        // 3. 인하공전 취업게시판
+        List<ScholarshipDto> jobs = crawler.crawlJobPages();
+        for (ScholarshipDto dto : jobs) {
+            if (dto.getArticleId() == null) continue;
+            crawler.crawlDetail(dto);
+            dto.setSourceSite(SOURCE_SITE);
+            dto.setBoardId("job");
+            dto.setCategory("JOB");
+            eventPublisher.publishEvent(new CrawlEvent(dto));
+            publishedCount++;
+        }
+
+        // 4. 잡알리오 (공공기관 채용정보 OpenAPI) — 진행중인 공고만
+        int jobalioPublished = publishJobalio();
+
+        return "전체 크롤링 수집: " + (publishedCount + jobalioPublished)
+                + "건 (장학 " + scholarships.size()
+                + " + 공모전 " + contests.size()
+                + " + 인하취업 " + jobs.size()
+                + " + 잡알리오 " + jobalioPublished
+                + ") 비동기 파이프라인 대기열 추가 완료";
     }
 
     public String crawlAndSaveIncremental() throws Exception {
@@ -90,6 +114,7 @@ public class CrawlService {
             crawler.crawlDetail(dto);
             dto.setSourceSite(SOURCE_SITE);
             dto.setBoardId("17");
+            dto.setCategory("SCHOLARSHIP");
             eventPublisher.publishEvent(new CrawlEvent(dto));
             publishedCount++;
         }
@@ -107,11 +132,57 @@ public class CrawlService {
             crawler.crawlDetail(dto);
             dto.setSourceSite(SOURCE_SITE);
             dto.setBoardId("contest");
+            dto.setCategory("CONTEST");
             eventPublisher.publishEvent(new CrawlEvent(dto));
             publishedCount++;
         }
 
-        return "증분 크롤링 수집: " + publishedCount + "건 비동기 파이프라인 대기열 추가 완료";
+        // 3. 인하공전 취업게시판 증분
+        long lastJobId = repository
+                .findTopBySourceSiteAndBoardIdOrderByArticleIdDesc(SOURCE_SITE, "job")
+                .map(Scholarship::getArticleId)
+                .orElse(0L);
+
+        List<ScholarshipDto> jobs = crawler.crawlJobPages();
+        for (int i = jobs.size() - 1; i >= 0; i--) {
+            ScholarshipDto dto = jobs.get(i);
+            if (dto.getArticleId() == null || dto.getArticleId() <= lastJobId) continue;
+            crawler.crawlDetail(dto);
+            dto.setSourceSite(SOURCE_SITE);
+            dto.setBoardId("job");
+            dto.setCategory("JOB");
+            eventPublisher.publishEvent(new CrawlEvent(dto));
+            publishedCount++;
+        }
+
+        // 4. 잡알리오 — 진행중 공고 풀-페치 후 파이프라인이 hash 로 dedup
+        int jobalioPublished = publishJobalio();
+
+        return "증분 크롤링 수집: " + (publishedCount + jobalioPublished) + "건 (잡알리오 " + jobalioPublished + ") 비동기 파이프라인 대기열 추가 완료";
+    }
+
+    /**
+     * 잡알리오 OpenAPI 호출 후 신규/변경분만 파이프라인에 발행.
+     * (hash 기반 dedup 은 CrawlPipeline 이 담당)
+     */
+    private int publishJobalio() {
+        if (!jobAlioFetcher.isConfigured()) {
+            log.info("[잡알리오] API 키 미설정 — 스킵");
+            return 0;
+        }
+        int count = 0;
+        try {
+            // 최대 5페이지 × 100건 = 500건 상한 (안전장치)
+            List<ScholarshipDto> dtos = jobAlioFetcher.fetchOngoing(5, 100);
+            for (ScholarshipDto dto : dtos) {
+                if (dto.getArticleId() == null) continue;
+                eventPublisher.publishEvent(new CrawlEvent(dto));
+                count++;
+            }
+        } catch (Exception e) {
+            log.error("[잡알리오] 발행 실패", e);
+        }
+        return count;
     }
 
     public String backfillSummaries() {

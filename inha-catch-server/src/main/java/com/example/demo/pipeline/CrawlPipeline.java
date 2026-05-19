@@ -80,6 +80,12 @@ public class CrawlPipeline {
                 post.setHasAttachment(dto.isHasAttachment());
                 post.setContent(dto.getContent());
                 post.setContentHash(currentHash);
+                if (dto.getCategory() != null) post.setCategory(dto.getCategory());
+                post.setCompanyName(dto.getCompanyName());
+                post.setWorkLocation(dto.getWorkLocation());
+                post.setRecruitmentCount(dto.getRecruitmentCount());
+                post.setEmploymentType(dto.getEmploymentType());
+                post.setExperienceLevel(dto.getExperienceLevel());
 
                 // 2025년 이전 데이터 또는 날짜 없는 데이터는 저장하지 않음
                 if (dto.getPostedAt() == null || dto.getPostedAt().getYear() < 2025) {
@@ -87,15 +93,25 @@ public class CrawlPipeline {
                     return null;
                 }
 
-                String combinedText = post.getTitle() + " " + (dto.getContent() != null ? dto.getContent() : "") + " " + (dto.getApplyPeriod() != null ? dto.getApplyPeriod() : "");
-                if (dto.getContent() != null && !dto.getContent().trim().isEmpty()) {
+                // 구조화 소스(잡알리오 등)는 prebuilt 요약을 가져왔으므로 Gemini 호출 스킵
+                if (dto.getPrebuiltSummary() != null && !dto.getPrebuiltSummary().isBlank()) {
+                    String pre = dto.getPrebuiltSummary();
+                    post.setDetailSummary(pre);
+                    StringBuilder basic = new StringBuilder();
+                    for (String line : pre.split("\n")) {
+                        if (line.startsWith("상태:") || line.startsWith("지원 대상:") || line.startsWith("핵심 혜택:")) {
+                            basic.append(line).append("\n");
+                        }
+                    }
+                    post.setBasicSummary(basic.toString().trim());
+                } else if (dto.getContent() != null && !dto.getContent().trim().isEmpty()) {
                     log.info("Generating Unified AI Summary for: {}", post.getTitle());
                     try { Thread.sleep(15000); } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         return null;
                     }
                     String summary = geminiService.generateSummary(GeminiService.PROMPT_UNIFIED, dto.getContent());
-                    
+
                     if (summary.contains("SKIP_OLD") || summary.contains("SKIP_DUP")) {
                         post.setBasicSummary("[AI 요약 스킵] 본 공지는 과거 게시물이거나 단순 공지사항입니다.");
                         post.setDetailSummary("[AI 요약 스킵] 본 공지는 과거 게시물이거나 단순 공지사항입니다.");
@@ -108,7 +124,6 @@ public class CrawlPipeline {
                             }
                         }
                         post.setBasicSummary(basic.toString().trim());
-                        // extractAndSetDateFromSummary 기능을 Pipeline으로 내재화해야 하지만 Entity에 transient 로 구현되어 있음
                     }
                 } else {
                     post.setBasicSummary("본문 내용이 없어 요약할 수 없습니다.");
