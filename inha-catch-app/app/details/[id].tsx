@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import api from '@/api/axios'
+import { getJwtToken } from '@/lib/secureStorage'
 import * as WebBrowser from 'expo-web-browser'
 import { ChevronLeft, Bookmark, RefreshCw, ExternalLink } from 'lucide-react-native'
 import Colors from '@/constants/Colors'
@@ -18,6 +19,8 @@ import Fonts from '@/constants/Fonts'
 import { useColorScheme } from '@/components/useColorScheme'
 import { useBookmarks } from '@/context/BookmarkContext'
 import { useUser } from '@/context/UserContext'
+import { useApplications, STATUS_ORDER, STATUS_LABEL, ApplicationStatus } from '@/context/ApplicationContext'
+import ScholarshipChat from '@/components/ScholarshipChat'
 import Markdown from 'react-native-markdown-display'
 
 interface Scholarship {
@@ -63,6 +66,7 @@ export default function DetailScreen() {
   const colors = Colors[colorScheme]
   const { toggleBookmark, isBookmarked } = useBookmarks()
   const { profile } = useUser()
+  const { getStatus, setStatus, clearStatus } = useApplications()
 
   const [detail, setDetail] = useState<Scholarship | null>(null)
   const [loading, setLoading] = useState(true)
@@ -89,7 +93,11 @@ export default function DetailScreen() {
   useEffect(() => {
     fetchDetail()
     if (profile.isLoggedIn && id) {
-      api.post('/api/user/view-log', { scholarshipId: Number(id) }).catch(() => {})
+      ;(async () => {
+        const token = await getJwtToken()
+        if (!token) return
+        api.post('/api/user/view-log', { scholarshipId: Number(id) }).catch(() => {})
+      })()
     }
   }, [id])
 
@@ -169,7 +177,7 @@ export default function DetailScreen() {
             <Text style={[styles.dDayText, { color: colors.ink }]}>
               {detail.dDay || detail.applyPeriod || '상시'}
             </Text>
-            {detail.viewCount !== undefined && (
+            {detail.viewCount != null && (
               <Text style={[styles.viewCount, { color: colors.stone400 }]}>
                 · 조회 {detail.viewCount.toLocaleString()}
               </Text>
@@ -178,6 +186,45 @@ export default function DetailScreen() {
         </View>
 
         <View style={[styles.divider, { backgroundColor: colors.stone100 }]} />
+
+        {/* 지원 상태 */}
+        {profile.isLoggedIn && (
+          <>
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: colors.stone400 }]}>
+                지원 상태 ─ STATUS
+              </Text>
+              <View style={styles.statusRow}>
+                {STATUS_ORDER.map((s) => {
+                  const active = getStatus(detail.id) === s
+                  return (
+                    <Pressable
+                      key={s}
+                      onPress={() => (active ? clearStatus(detail.id) : setStatus(detail.id, s))}
+                      style={[
+                        styles.statusChip,
+                        {
+                          backgroundColor: active ? colors.ink : colors.stone50,
+                          borderColor: active ? colors.ink : colors.stone100,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusChipText,
+                          { color: active ? colors.paper : colors.stone400 },
+                        ]}
+                      >
+                        {STATUS_LABEL[s]}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+            </View>
+            <View style={[styles.divider, { backgroundColor: colors.stone100 }]} />
+          </>
+        )}
 
         {/* AI 요약 */}
         <View style={styles.section}>
@@ -239,6 +286,16 @@ export default function DetailScreen() {
                 상세 내용 ─ DETAILS
               </Text>
               <Text style={[styles.contentText, { color: colors.ink }]}>{detail.content}</Text>
+            </View>
+          </>
+        )}
+
+        {/* AI 챗봇 */}
+        {profile.isLoggedIn && (
+          <>
+            <View style={[styles.divider, { backgroundColor: colors.stone100 }]} />
+            <View style={styles.section}>
+              <ScholarshipChat scholarshipId={detail.id} />
             </View>
           </>
         )}
@@ -462,6 +519,23 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 14,
     textAlign: 'center',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  statusChip: {
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusChipText: {
+    fontFamily: Fonts.semibold,
+    fontSize: 13,
   },
   retryBtn: {
     flexDirection: 'row',

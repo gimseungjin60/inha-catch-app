@@ -17,7 +17,7 @@ import Colors from '@/constants/Colors'
 import Fonts from '@/constants/Fonts'
 import { useColorScheme } from '@/components/useColorScheme'
 import { useUser } from '@/context/UserContext'
-import ScholarshipCard, { Scholarship } from '@/components/ScholarshipCard'
+import ScholarshipCard, { Scholarship, RecommendReason } from '@/components/ScholarshipCard'
 import api from '@/api/axios'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
@@ -43,9 +43,10 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const mapScholarship = (d: any, recIds: Set<number>): Scholarship => {
+  const mapScholarship = (d: any, recIds: Set<number>, reasonsById: Map<number, RecommendReason[]>): Scholarship => {
+    const title = d.title ?? ''
     const tags: string[] = []
-    if (d.title.includes('공모전')) tags.push('#공모전')
+    if (title.includes('공모전')) tags.push('#공모전')
     else tags.push('#장학금')
     if (d.eligibility && d.eligibility.length < 10) tags.push('#' + d.eligibility)
 
@@ -64,12 +65,13 @@ export default function HomeScreen() {
 
     return {
       id: d.id,
-      type: d.title.includes('공모전') ? 'contest' : 'scholarship',
+      type: title.includes('공모전') ? 'contest' : 'scholarship',
       isRecommended: recIds.has(d.id),
-      title: d.title,
+      title: title,
       aiSummary: parsedAiSummary,
       tags: tags.length ? tags : ['#인하대'],
       dDay: d.dDay || '상시',
+      reasons: reasonsById.get(d.id),
     }
   }
 
@@ -90,12 +92,20 @@ export default function HomeScreen() {
         api.get(`/api/scholarships/recommended?${params.toString()}`).catch(() => ({ data: [] })),
       ])
         .then(([allRes, recRes]) => {
+          const recList: any[] = recRes.data || []
           const recIds = new Set<number>(
-            (recRes.data || []).map((r: any) => r.scholarship?.id ?? r.id).filter(Boolean)
+            recList.map((r: any) => r.scholarship?.id ?? r.id).filter(Boolean)
           )
+          const reasonsById = new Map<number, RecommendReason[]>()
+          for (const r of recList) {
+            const sId = r.scholarship?.id ?? r.id
+            if (sId && Array.isArray(r.reasons)) {
+              reasonsById.set(sId, r.reasons)
+            }
+          }
 
           const rawData = allRes.data.content || allRes.data
-          const mapped: Scholarship[] = rawData.map((d: any) => mapScholarship(d, recIds))
+          const mapped: Scholarship[] = rawData.map((d: any) => mapScholarship(d, recIds, reasonsById))
 
           mapped.sort((a, b) => {
             if (a.isRecommended && !b.isRecommended) return -1

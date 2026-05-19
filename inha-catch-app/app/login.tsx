@@ -41,10 +41,13 @@ export default function LoginScreen() {
   const [isResetting, setIsResetting] = useState(false)
 
   const saveLoginData = async (data: any) => {
+    if (!data?.token || !data?.refreshToken || !data?.user) {
+      throw new Error('INVALID_LOGIN_RESPONSE')
+    }
     await setJwtToken(data.token)
     await setRefreshToken(data.refreshToken)
     await updateProfile({
-      name: data.user.name,
+      name: data.user.name ?? '',
       major: data.user.major || '',
       keywords: data.user.keywords ? data.user.keywords.split(',').filter(Boolean) : [],
       isLoggedIn: true,
@@ -67,7 +70,10 @@ export default function LoginScreen() {
       await saveLoginData(res.data)
       router.replace('/(tabs)')
     } catch (err: any) {
-      const msg = err.response?.data?.message || '이메일 혹은 비밀번호를 확인해주세요.'
+      const msg =
+        err.message === 'INVALID_LOGIN_RESPONSE'
+          ? '서버 응답이 올바르지 않습니다. 잠시 후 다시 시도해주세요.'
+          : err.response?.data?.message || '이메일 혹은 비밀번호를 확인해주세요.'
       showAlert('로그인 실패', msg)
     } finally {
       setIsSubmitting(false)

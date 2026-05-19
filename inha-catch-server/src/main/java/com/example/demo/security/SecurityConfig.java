@@ -69,6 +69,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
+            // 인증 누락/만료 → 401 (axios refresh 트리거). 권한 부족 → 403.
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((req, res, e) -> res.sendError(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED))
+            )
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterAfter(jwtAuthenticationFilter, RateLimitFilter.class);
 
