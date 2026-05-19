@@ -7,6 +7,12 @@ import { useColorScheme } from '@/components/useColorScheme'
 import { useRouter } from 'expo-router'
 import { useBookmarks } from '@/context/BookmarkContext'
 
+export interface RecommendReason {
+  type: 'MAJOR' | 'KEYWORD' | 'DEADLINE' | 'FRESH' | 'POPULAR' | string
+  label: string
+  points: number
+}
+
 export interface Scholarship {
   id: number
   type: 'scholarship' | 'contest'
@@ -15,6 +21,7 @@ export interface Scholarship {
   aiSummary: string[]
   tags: string[]
   dDay: string
+  reasons?: RecommendReason[]
 }
 
 function parseDDayNumber(dDay: string): number | null {
@@ -81,6 +88,22 @@ export default function ScholarshipCard({ item }: { item: Scholarship }) {
       <Text style={[styles.title, { color: colors.ink }]} numberOfLines={2}>
         {item.title}
       </Text>
+
+      {/* 추천 이유 (XAI) */}
+      {item.isRecommended && item.reasons && item.reasons.length > 0 && (
+        <View style={styles.reasonRow}>
+          {item.reasons.slice(0, 3).map((r, i) => (
+            <View
+              key={i}
+              style={[styles.reasonChip, { backgroundColor: colors.signalSoft, borderColor: colors.signal }]}
+            >
+              <Text style={[styles.reasonText, { color: colors.signal }]} numberOfLines={1}>
+                {r.label} +{r.points}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
 
       {/* AI 요약 박스 */}
       {item.aiSummary && item.aiSummary.length > 0 && (
@@ -215,5 +238,23 @@ const styles = StyleSheet.create({
   },
   bookmarkBtn: {
     padding: 4,
+  },
+  reasonRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginBottom: 10,
+  },
+  reasonChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    maxWidth: 180,
+  },
+  reasonText: {
+    fontFamily: Fonts.semibold,
+    fontSize: 10.5,
+    letterSpacing: 0.2,
   },
 })

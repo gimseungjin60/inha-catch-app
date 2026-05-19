@@ -31,6 +31,7 @@ export default function SearchScreen() {
   const [error, setError] = useState<string | null>(null)
   const [recommendedIds, setRecommendedIds] = useState<Set<number>>(new Set())
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchSeq = useRef(0)
 
   const keywordsKey = profile.keywords?.join(',') ?? ''
 
@@ -57,21 +58,25 @@ export default function SearchScreen() {
       setHasSearched(true)
       setError(null)
 
+      const mySeq = ++searchSeq.current
+
       api
         .get(`/api/scholarships/search?keyword=${encodeURIComponent(kw)}&size=100`)
         .then((res) => {
+          if (mySeq !== searchSeq.current) return // 더 새로운 검색이 시작됨 → 결과 무시
           const rawData = res.data.content || res.data
           const mapped: Scholarship[] = rawData.map((d: any) => {
+            const title = d.title ?? ''
             const tags: string[] = []
-            if (d.title.includes('공모전')) tags.push('#공모전')
+            if (title.includes('공모전')) tags.push('#공모전')
             else tags.push('#장학금')
             if (d.eligibility && d.eligibility.length < 10) tags.push('#' + d.eligibility)
 
             return {
               id: d.id,
-              type: d.title.includes('공모전') ? 'contest' : 'scholarship',
+              type: title.includes('공모전') ? 'contest' : 'scholarship',
               isRecommended: recommendedIds.has(d.id),
-              title: d.title,
+              title: title,
               aiSummary: [
                 d.eligibility || '자격 조건은 상세 요강 참조',
                 d.amountInfo || '지원 내역은 상세 요강 참조',
@@ -84,10 +89,13 @@ export default function SearchScreen() {
           setResults(mapped)
         })
         .catch((err) => {
+          if (mySeq !== searchSeq.current) return
           console.error(err)
           setError('검색 중 오류가 발생했습니다.')
         })
-        .finally(() => setLoading(false))
+        .finally(() => {
+          if (mySeq === searchSeq.current) setLoading(false)
+        })
     },
     [recommendedIds]
   )

@@ -114,6 +114,9 @@ public class Scholarship {
     @Transient
     public String getDDay() {
         java.time.LocalDate endDate = parseLatestDate(applyPeriod);
+        // applyPeriod 비어있을 때만 AI 요약에서 폴백 (title은 "2026-1차" 같은 오파싱 위험)
+        if (endDate == null) endDate = parseLatestDate(detailSummary);
+        if (endDate == null) endDate = parseLatestDate(basicSummary);
         if (endDate == null) return "상시";
         long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), endDate);
         if (daysBetween < 0) return "마감";

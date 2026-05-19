@@ -17,7 +17,7 @@ import Colors from '@/constants/Colors'
 import Fonts from '@/constants/Fonts'
 import { useColorScheme } from '@/components/useColorScheme'
 import { useUser } from '@/context/UserContext'
-import { Shield, ChevronDown, ChevronUp, X, AlertTriangle } from 'lucide-react-native'
+import { Shield, ChevronDown, ChevronUp, X, AlertTriangle, ClipboardList, ChevronRight } from 'lucide-react-native'
 import { useRouter } from 'expo-router'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { clearAuthTokens, getJwtToken } from '@/lib/secureStorage'
@@ -167,7 +167,11 @@ export default function ProfileScreen() {
         '@bookmarks',
         '@cache_scholarships',
       ])
-      DevSettings.reload()
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined') window.location.reload()
+      } else {
+        DevSettings.reload()
+      }
     } catch (err: any) {
       const msg = err.response?.data?.message || '회원 탈퇴에 실패했습니다.'
       setDeleteError(msg)
@@ -244,6 +248,25 @@ export default function ProfileScreen() {
             </View>
           </View>
         </View>
+
+        {/* 내 지원 현황 진입 */}
+        {profile.isLoggedIn && (
+          <Pressable
+            onPress={() => router.push('/applications' as any)}
+            style={[styles.menuRow, { backgroundColor: colors.paperCard, borderColor: colors.stone100 }]}
+          >
+            <View style={styles.menuLeft}>
+              <ClipboardList size={18} strokeWidth={1.5} color={colors.ink} />
+              <View>
+                <Text style={[styles.menuTitle, { color: colors.ink }]}>내 지원 현황</Text>
+                <Text style={[styles.menuSub, { color: colors.stone400 }]}>
+                  관심·지원·합격/탈락 트래킹
+                </Text>
+              </View>
+            </View>
+            <ChevronRight size={16} strokeWidth={1.5} color={colors.stone400} />
+          </Pressable>
+        )}
 
         {/* Section: 기본 정보 */}
         <View style={[styles.card, { backgroundColor: colors.paperCard, borderColor: colors.stone100 }]}>
@@ -519,6 +542,30 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 16,
     marginBottom: 12,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 12,
+  },
+  menuLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  menuTitle: {
+    fontFamily: Fonts.semibold,
+    fontSize: 14,
+  },
+  menuSub: {
+    fontFamily: Fonts.regular,
+    fontSize: 12,
+    marginTop: 2,
   },
   cardLabel: {
     fontFamily: Fonts.semibold,

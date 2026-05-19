@@ -11,8 +11,6 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @RestController
@@ -88,8 +86,8 @@ public class ScholarshipController {
 
         List<RecommendedScholarshipDto> result = all.stream()
                 .map(s -> {
-                    int[] scores = calculateScore(s, majorTrimmed, keywordList, today);
-                    return new RecommendedScholarshipDto(s, scores[0], scores[1]);
+                    ScoreResult sr = calculateScore(s, majorTrimmed, keywordList, today);
+                    return new RecommendedScholarshipDto(s, sr.total(), sr.personal(), sr.reasons());
                 })
                 // 개인 관련성 점수가 최소 25점 이상이어야 추천
                 .filter(dto -> dto.getPersonalScore() >= 25)
@@ -123,9 +121,10 @@ public class ScholarshipController {
      *   조회수 상위 (>300) → +5
      *   조회수 중위 (>150) → +3
      */
-    private int[] calculateScore(Scholarship s, String major, List<String> keywords, LocalDate today) {
+    private ScoreResult calculateScore(Scholarship s, String major, List<String> keywords, LocalDate today) {
         int personalScore = 0;
         int bonusScore = 0;
+        List<Reason> reasons = new ArrayList<>();
 
         String title = nullSafe(s.getTitle()).toLowerCase();
         String eligibility = nullSafe(s.getEligibility()).toLowerCase();
@@ -138,8 +137,10 @@ public class ScholarshipController {
             String majorLower = major.toLowerCase();
             if (eligibility.contains(majorLower) || content.contains(majorLower)) {
                 personalScore += 30;
+                reasons.add(new Reason("MAJOR", "학과 일치 (" + major + ")", 30));
             } else if (title.contains(majorLower) || basicSummary.contains(majorLower)) {
                 personalScore += 20;
+                reasons.add(new Reason("MAJOR", "학과 관련 (" + major + ")", 20));
             }
         }
 
@@ -147,11 +148,12 @@ public class ScholarshipController {
         for (String kw : keywords) {
             String kwLower = kw.toLowerCase();
             if (eligibility.contains(kwLower)) {
-                // 자격 조건에 매칭 → 가장 높은 관련성
                 personalScore += 25;
+                reasons.add(new Reason("KEYWORD", "키워드 '" + kw + "' (자격)", 25));
             } else if (title.contains(kwLower) || basicSummary.contains(kwLower)
                     || detailSummary.contains(kwLower) || content.contains(kwLower)) {
                 personalScore += 15;
+                reasons.add(new Reason("KEYWORD", "키워드 '" + kw + "'", 15));
             }
         }
 
@@ -159,14 +161,17 @@ public class ScholarshipController {
         long dDay = parseDDay(s);
         if (dDay >= 0 && dDay <= 3) {
             bonusScore += 15;
+            reasons.add(new Reason("DEADLINE", "마감 임박 (D-" + dDay + ")", 15));
         } else if (dDay >= 4 && dDay <= 7) {
             bonusScore += 10;
+            reasons.add(new Reason("DEADLINE", "마감 임박 (D-" + dDay + ")", 10));
         } else if (dDay >= 8 && dDay <= 14) {
             bonusScore += 5;
+            reasons.add(new Reason("DEADLINE", "곧 마감 (D-" + dDay + ")", 5));
         }
         // 이미 마감된 공고는 추천하지 않음
-        if (dDay < 0 && dDay != -1) { // -1은 파싱 실패(상시)
-            return new int[]{0, 0};
+        if (dDay < 0 && dDay != -1) {
+            return new ScoreResult(0, 0, java.util.Collections.emptyList());
         }
 
         // ── 4. 최신성 보너스 ──
@@ -174,8 +179,10 @@ public class ScholarshipController {
             long daysSincePosted = ChronoUnit.DAYS.between(s.getPostedAt(), today);
             if (daysSincePosted >= 0 && daysSincePosted <= 3) {
                 bonusScore += 8;
+                reasons.add(new Reason("FRESH", "최근 등록", 8));
             } else if (daysSincePosted >= 0 && daysSincePosted <= 7) {
                 bonusScore += 4;
+                reasons.add(new Reason("FRESH", "최근 등록", 4));
             }
         }
 
@@ -183,34 +190,20 @@ public class ScholarshipController {
         int vc = s.getViewCount() != null ? s.getViewCount() : 0;
         if (vc > 300) {
             bonusScore += 5;
+            reasons.add(new Reason("POPULAR", "인기 공고", 5));
         } else if (vc > 150) {
             bonusScore += 3;
+            reasons.add(new Reason("POPULAR", "조회 많음", 3));
         }
 
         int total = personalScore + bonusScore;
-        return new int[]{total, personalScore};
+        return new ScoreResult(total, personalScore, reasons);
     }
 
-    /** applyPeriod에서 마감일까지 남은 일수를 파싱. 파싱 실패 시 -1 반환. */
+    /** applyPeriod에서 마감일까지 남은 일수. 파싱 실패 시 -1 반환. */
     private long parseDDay(Scholarship s) {
-        if (s.getApplyPeriod() == null || s.getApplyPeriod().trim().isEmpty()) {
-            return -1;
-        }
-        try {
-            Matcher m = Pattern.compile("(\\d{4})[./-](\\d{2})[./-](\\d{2})").matcher(s.getApplyPeriod());
-            String lastDateStr = null;
-            while (m.find()) {
-                lastDateStr = m.group();
-            }
-            if (lastDateStr != null) {
-                lastDateStr = lastDateStr.replaceAll("[./]", "-");
-                LocalDate endDate = LocalDate.parse(lastDateStr);
-                return ChronoUnit.DAYS.between(LocalDate.now(), endDate);
-            }
-        } catch (Exception e) {
-            // ignore
-        }
-        return -1;
+        LocalDate end = Scholarship.parseLatestDate(s.getApplyPeriod());
+        return end == null ? -1 : ChronoUnit.DAYS.between(LocalDate.now(), end);
     }
 
     private String nullSafe(String s) {
@@ -219,20 +212,27 @@ public class ScholarshipController {
 
     // ── 추천 결과 DTO ──
 
+    public record Reason(String type, String label, int points) {}
+
+    private record ScoreResult(int total, int personal, List<Reason> reasons) {}
+
     public static class RecommendedScholarshipDto {
         private final Scholarship scholarship;
         private final int score;
         private final int personalScore;
+        private final List<Reason> reasons;
 
-        public RecommendedScholarshipDto(Scholarship scholarship, int score, int personalScore) {
+        public RecommendedScholarshipDto(Scholarship scholarship, int score, int personalScore, List<Reason> reasons) {
             this.scholarship = scholarship;
             this.score = score;
             this.personalScore = personalScore;
+            this.reasons = reasons;
         }
 
         public Scholarship getScholarship() { return scholarship; }
         public int getScore() { return score; }
         public int getTotalScore() { return score; }
         public int getPersonalScore() { return personalScore; }
+        public List<Reason> getReasons() { return reasons; }
     }
 }
