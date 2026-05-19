@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/scholarships")
 public class ScholarshipController {
 
-    private static final int MAX_PAGE_SIZE = 200;
+    private static final int MAX_PAGE_SIZE = 2000;
 
     private final ScholarshipRepository repository;
 
@@ -33,7 +33,7 @@ public class ScholarshipController {
         if (page < 0) page = 0;
         if (size < 1) size = 1;
         if (size > MAX_PAGE_SIZE) size = MAX_PAGE_SIZE;
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "articleId"));
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "crawledAt"));
         return repository.findAll(pageable);
     }
 
@@ -56,7 +56,7 @@ public class ScholarshipController {
         if (page < 0) page = 0;
         if (size < 1) size = 1;
         if (size > MAX_PAGE_SIZE) size = MAX_PAGE_SIZE;
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "articleId"));
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "crawledAt"));
         return repository.findByTitleContainingOrContentContainingOrBasicSummaryContainingOrDetailSummaryContaining(keyword, keyword, keyword, keyword, pageable);
     }
 
@@ -81,7 +81,7 @@ public class ScholarshipController {
 
         LocalDate today = LocalDate.now();
         // 최근 500건만 대상으로 추천 (OOM 방지)
-        Pageable recommendPageable = PageRequest.of(0, 500, Sort.by(Sort.Direction.DESC, "articleId"));
+        Pageable recommendPageable = PageRequest.of(0, 500, Sort.by(Sort.Direction.DESC, "crawledAt"));
         List<Scholarship> all = repository.findAll(recommendPageable).getContent();
 
         List<RecommendedScholarshipDto> result = all.stream()

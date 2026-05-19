@@ -15,7 +15,7 @@ export interface RecommendReason {
 
 export interface Scholarship {
   id: number
-  type: 'scholarship' | 'contest'
+  type: 'scholarship' | 'contest' | 'job'
   isRecommended: boolean
   title: string
   aiSummary: string[]
@@ -43,7 +43,8 @@ export default function ScholarshipCard({ item }: { item: Scholarship }) {
   const dDayNum = parseDDayNumber(item.dDay)
   const isUrgent = dDayNum !== null && dDayNum >= 0 && dDayNum <= 3
   const isClosed = item.dDay === '마감'
-  const category = item.type === 'scholarship' ? '장학금' : '공모전'
+  const category =
+    item.type === 'scholarship' ? '장학금' : item.type === 'contest' ? '공모전' : '채용'
 
   return (
     <Pressable

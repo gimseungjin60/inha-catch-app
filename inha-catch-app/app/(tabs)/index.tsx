@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   RefreshControl,
+  ScrollView,
 } from 'react-native'
 import { Bell, RefreshCw, ChevronRight } from 'lucide-react-native'
 import { useRouter } from 'expo-router'
@@ -18,10 +19,13 @@ import Fonts from '@/constants/Fonts'
 import { useColorScheme } from '@/components/useColorScheme'
 import { useUser } from '@/context/UserContext'
 import ScholarshipCard, { Scholarship, RecommendReason } from '@/components/ScholarshipCard'
+import SectionHeader from '@/components/SectionHeader'
 import api from '@/api/axios'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
-const TABS = ['전체', '장학금', '공모전'] as const
+const HORIZONTAL_CARD_WIDTH = 280
+
+const TABS = ['전체', '장학금', '공모전', '채용'] as const
 type Tab = (typeof TABS)[number]
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
@@ -45,16 +49,37 @@ export default function HomeScreen() {
 
   const mapScholarship = (d: any, recIds: Set<number>, reasonsById: Map<number, RecommendReason[]>): Scholarship => {
     const title = d.title ?? ''
-    const tags: string[] = []
-    if (title.includes('공모전')) tags.push('#공모전')
-    else tags.push('#장학금')
-    if (d.eligibility && d.eligibility.length < 10) tags.push('#' + d.eligibility)
+    // 서버 category 우선, 없으면 제목 휴리스틱 폴백
+    const cat: string = (d.category || '').toUpperCase()
+    let type: Scholarship['type']
+    if (cat === 'JOB') type = 'job'
+    else if (cat === 'CONTEST') type = 'contest'
+    else if (cat === 'SCHOLARSHIP') type = 'scholarship'
+    else if (title.includes('공모전')) type = 'contest'
+    else type = 'scholarship'
 
-    let parsedAiSummary = [
-      d.eligibility || '자격 조건은 상세 요강 참조',
-      d.amountInfo || '지원 내역은 상세 요강 참조',
-      d.applyPeriod || '모집 기한은 상세 요강 참조',
-    ]
+    const tags: string[] = []
+    if (type === 'job') tags.push('#채용')
+    else if (type === 'contest') tags.push('#공모전')
+    else tags.push('#장학금')
+    if (type === 'job' && d.companyName) tags.push('#' + d.companyName)
+    else if (type === 'job' && d.workLocation) tags.push('#' + d.workLocation)
+    else if (d.eligibility && d.eligibility.length < 10) tags.push('#' + d.eligibility)
+
+    let parsedAiSummary: string[]
+    if (type === 'job') {
+      parsedAiSummary = [
+        d.companyName || '기관 정보 없음',
+        d.workLocation ? `근무지: ${d.workLocation}` : '근무지 정보 없음',
+        d.applyPeriod || '모집 기한은 상세 요강 참조',
+      ]
+    } else {
+      parsedAiSummary = [
+        d.eligibility || '자격 조건은 상세 요강 참조',
+        d.amountInfo || '지원 내역은 상세 요강 참조',
+        d.applyPeriod || '모집 기한은 상세 요강 참조',
+      ]
+    }
     if (d.basicSummary) {
       const bullets = d.basicSummary
         .split('\n')
@@ -65,12 +90,12 @@ export default function HomeScreen() {
 
     return {
       id: d.id,
-      type: title.includes('공모전') ? 'contest' : 'scholarship',
+      type,
       isRecommended: recIds.has(d.id),
       title: title,
       aiSummary: parsedAiSummary,
       tags: tags.length ? tags : ['#인하대'],
-      dDay: d.dDay || '상시',
+      dDay: d.DDay || d.dDay || '상시',
       reasons: reasonsById.get(d.id),
     }
   }
@@ -88,7 +113,7 @@ export default function HomeScreen() {
       if (keywordsKey) params.append('keywords', keywordsKey)
 
       Promise.all([
-        api.get('/api/scholarships?size=100'),
+        api.get('/api/scholarships?size=1500'),
         api.get(`/api/scholarships/recommended?${params.toString()}`).catch(() => ({ data: [] })),
       ])
         .then(([allRes, recRes]) => {
@@ -141,15 +166,41 @@ export default function HomeScreen() {
   }, [fetchData])
 
   const filteredData = useMemo(() => {
-    return data.filter((item) => {
+    const filtered = data.filter((item) => {
       if (activeTab === '전체') return true
       if (activeTab === '장학금') return item.type === 'scholarship'
       if (activeTab === '공모전') return item.type === 'contest'
+      if (activeTab === '채용') return item.type === 'job'
       return true
     })
+    // 탭당 50건만 노출 (화면 부하 줄임)
+    return filtered.slice(0, 50)
   }, [data, activeTab])
 
-  const recommendedCount = useMemo(() => data.filter((d) => d.isRecommended).length, [data])
+  // dDay 문자열을 숫자로 — "D-3" → 3, "D-Day" → 0, "마감"/"상시" → null
+  const parseDDay = (s: string): number | null => {
+    if (!s) return null
+    if (s === 'D-Day') return 0
+    if (s === '마감' || s === '상시') return null
+    const m = s.match(/^D-(\d+)$/)
+    return m ? parseInt(m[1], 10) : null
+  }
+
+  // 가로 캐러셀 — 추천 (전체 탭에서만 노출)
+  const recommendedItems = useMemo(
+    () => data.filter((d) => d.isRecommended).slice(0, 10),
+    [data]
+  )
+  // 가로 캐러셀 — 마감 임박 (D-7 이내, 마감/상시 제외)
+  const urgentItems = useMemo(() => {
+    return data
+      .map((d) => ({ ...d, _dn: parseDDay(d.dDay) }))
+      .filter((d) => d._dn !== null && d._dn! >= 0 && d._dn! <= 7)
+      .sort((a, b) => a._dn! - b._dn!)
+      .slice(0, 10)
+  }, [data])
+
+  const recommendedCount = recommendedItems.length
 
   const renderItem = useCallback(({ item }: { item: Scholarship }) => <ScholarshipCard item={item} />, [])
   const keyExtractor = useCallback((item: Scholarship) => item.id.toString(), [])
@@ -177,10 +228,47 @@ export default function HomeScreen() {
         공고가 준비됐어요.
       </Text>
 
-      {recommendedCount > 0 && (
-        <Text style={[styles.subline, { color: colors.stone400 }]}>
-          이 중 {recommendedCount}건은 당신의 조건에 잘 맞는 추천이에요.
-        </Text>
+      {/* 맞춤 추천 진행 표시 — 학과/키워드 활성 칩 + 추천 건수 강조 */}
+      {(profile.major || (profile.keywords && profile.keywords.length > 0)) && (
+        <View style={[styles.matchBox, { backgroundColor: colors.signalSoft, borderColor: colors.signal }]}>
+          <View style={styles.matchTopRow}>
+            <Text style={[styles.matchLabel, { color: colors.signal }]}>
+              MATCHING ─ ACTIVE
+            </Text>
+            {recommendedCount > 0 && (
+              <Text style={[styles.matchCount, { color: colors.signal }]}>
+                {recommendedCount}건
+              </Text>
+            )}
+          </View>
+          <Text style={[styles.matchHeadline, { color: colors.ink }]}>
+            {recommendedCount > 0
+              ? `당신을 위한 맞춤 추천 ${recommendedCount}건이 위쪽에 있어요.`
+              : '아직 매칭된 공고가 없어요. 키워드를 추가해보세요.'}
+          </Text>
+          <View style={styles.matchChipRow}>
+            {profile.major ? (
+              <View style={[styles.matchChip, { backgroundColor: colors.paperCard, borderColor: colors.signal }]}>
+                <Text style={[styles.matchChipKey, { color: colors.stone400 }]}>학과</Text>
+                <Text style={[styles.matchChipVal, { color: colors.ink }]}>{profile.major}</Text>
+              </View>
+            ) : null}
+            {(profile.keywords || []).slice(0, 4).map((kw) => (
+              <View
+                key={kw}
+                style={[styles.matchChip, { backgroundColor: colors.paperCard, borderColor: colors.signal }]}
+              >
+                <Text style={[styles.matchChipKey, { color: colors.stone400 }]}>#</Text>
+                <Text style={[styles.matchChipVal, { color: colors.ink }]}>{kw}</Text>
+              </View>
+            ))}
+            {(profile.keywords || []).length > 4 && (
+              <Text style={[styles.matchMore, { color: colors.stone400 }]}>
+                +{(profile.keywords || []).length - 4}
+              </Text>
+            )}
+          </View>
+        </View>
       )}
 
       {/* 학과/키워드 미설정 안내 배너 */}
@@ -215,6 +303,42 @@ export default function HomeScreen() {
           </View>
           <ChevronRight size={16} strokeWidth={1.5} color={colors.stone400} />
         </Pressable>
+      )}
+
+      {/* 가로 캐러셀: 추천 공고 — 전체 탭에서만 */}
+      {activeTab === '전체' && recommendedItems.length > 0 && (
+        <View style={styles.carouselBlock}>
+          <SectionHeader title="추천 공고" subtitle={`${recommendedItems.length}건`} />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.carouselScroll}
+          >
+            {recommendedItems.map((item) => (
+              <View key={`rec-${item.id}`} style={styles.hCardWrap}>
+                <ScholarshipCard item={item} />
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* 가로 캐러셀: 마감 임박 (D-7 이내) — 전체 탭에서만 */}
+      {activeTab === '전체' && urgentItems.length > 0 && (
+        <View style={styles.carouselBlock}>
+          <SectionHeader title="마감 임박" subtitle={`D-7 이내 ${urgentItems.length}건`} />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.carouselScroll}
+          >
+            {urgentItems.map((item) => (
+              <View key={`urg-${item.id}`} style={styles.hCardWrap}>
+                <ScholarshipCard item={item} />
+              </View>
+            ))}
+          </ScrollView>
+        </View>
       )}
 
       {/* segmented 탭 */}
@@ -362,6 +486,66 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     gap: 10,
   },
+  matchBox: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 18,
+  },
+  matchTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  matchLabel: {
+    fontFamily: Fonts.semibold,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  matchCount: {
+    fontFamily: Fonts.bold,
+    fontSize: 16,
+    letterSpacing: -0.3,
+  },
+  matchHeadline: {
+    fontFamily: Fonts.semibold,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 10,
+  },
+  matchChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  matchChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 4,
+  },
+  matchChipKey: {
+    fontFamily: Fonts.medium,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  matchChipVal: {
+    fontFamily: Fonts.semibold,
+    fontSize: 12,
+  },
+  matchMore: {
+    fontFamily: Fonts.semibold,
+    fontSize: 11,
+    marginLeft: 2,
+  },
   profileBannerContent: {
     flex: 1,
   },
@@ -376,6 +560,18 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semibold,
     fontSize: 13,
     lineHeight: 18,
+  },
+  carouselBlock: {
+    marginBottom: 8,
+    marginHorizontal: -20, // 카드가 화면 끝까지 닿게 부모 padding 상쇄
+  },
+  carouselScroll: {
+    paddingLeft: 20,
+    paddingRight: 8,
+  },
+  hCardWrap: {
+    width: HORIZONTAL_CARD_WIDTH,
+    marginRight: 12,
   },
   tabsContainer: {
     flexDirection: 'row',

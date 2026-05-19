@@ -93,6 +93,22 @@ public class Scholarship {
     @Column(name = "amount_info", columnDefinition = "LONGTEXT")
     private String amountInfo;
 
+    // 채용공고 전용 필드 (category=JOB일 때 사용)
+    @Column(name = "company_name", length = 500)
+    private String companyName;
+
+    @Column(name = "work_location", length = 500)
+    private String workLocation;
+
+    @Column(name = "recruitment_count", length = 100)
+    private String recruitmentCount;
+
+    @Column(name = "employment_type", length = 100)
+    private String employmentType;
+
+    @Column(name = "experience_level", length = 100)
+    private String experienceLevel;
+
     @Lob
     @Column(name = "related_links", columnDefinition = "LONGTEXT")
     private String relatedLinks;
