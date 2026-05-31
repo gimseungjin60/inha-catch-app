@@ -1,77 +1,36 @@
 package com.example.demo;
 
-import com.google.auth.oauth2.GoogleCredentials;
-import com.google.firebase.FirebaseApp;
-import com.google.firebase.FirebaseOptions;
-import com.google.firebase.messaging.FirebaseMessaging;
-import com.google.firebase.messaging.Message;
-import com.google.firebase.messaging.Notification;
-import jakarta.annotation.PostConstruct;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import com.google.firebase.messaging.*;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
-import java.io.FileInputStream;
-import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-/**
- * Firebase Cloud Messaging 서비스.
- * firebase.service-account-path 가 비어있으면 초기화 스킵 (개발 환경용).
- */
+@Slf4j
 @Service
-public class FcmService {
+public class FCMService {
 
-    private static final Logger log = LoggerFactory.getLogger(FcmService.class);
+    private final FirebaseMessaging firebaseMessaging;
 
-    @Value("${firebase.service-account-path:}")
-    private String serviceAccountPath;
+    public FCMService(@Nullable FirebaseMessaging firebaseMessaging) {
+        this.firebaseMessaging = firebaseMessaging;
+    }
 
-    private boolean enabled = false;
-
-    @PostConstruct
-    public void init() {
-        if (serviceAccountPath == null || serviceAccountPath.isBlank()) {
-            log.warn("[FCM] firebase.service-account-path 미설정 → FCM 비활성화");
-            return;
-        }
-        try {
-            if (FirebaseApp.getApps().isEmpty()) {
-                try (FileInputStream serviceAccount = new FileInputStream(serviceAccountPath)) {
-                    FirebaseOptions options = FirebaseOptions.builder()
-                            .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-                            .build();
-                    FirebaseApp.initializeApp(options);
-                }
-            }
-            enabled = true;
-            log.info("[FCM] Firebase Admin SDK 초기화 완료");
-        } catch (Exception e) {
-            log.error("[FCM] Firebase 초기화 실패: {}", e.getMessage());
-            enabled = false;
-        }
+    public boolean isAvailable() {
+        return firebaseMessaging != null;
     }
 
     /**
-     * 특정 사용자 단말로 푸시 발송.
-     * @param fcmToken 대상 단말 FCM 토큰
-     * @param title 알림 제목
-     * @param body 알림 본문
-     * @param scholarshipId 탭 시 이동할 공고 ID (nullable)
+     * 단일 사용자에게 푸시 알림 발송
      */
-    public boolean sendToDevice(String fcmToken, String title, String body, Long scholarshipId) {
-        if (!enabled) {
-            log.debug("[FCM] 비활성화 상태라 전송 생략: {}", title);
+    public boolean sendToUser(String fcmToken, String title, String body, Map<String, String> data) {
+        if (!isAvailable() || fcmToken == null || fcmToken.isBlank()) {
             return false;
         }
-        if (fcmToken == null || fcmToken.isBlank()) return false;
 
         try {
-            Map<String, String> data = new HashMap<>();
-            if (scholarshipId != null) data.put("scholarshipId", String.valueOf(scholarshipId));
-            data.put("type", "NEW");
-
             Message message = Message.builder()
                     .setToken(fcmToken)
                     .setNotification(Notification.builder()
@@ -79,14 +38,66 @@ public class FcmService {
                             .setBody(body)
                             .build())
                     .putAllData(data)
+                    .setAndroidConfig(AndroidConfig.builder()
+                            .setPriority(AndroidConfig.Priority.HIGH)
+                            .setNotification(AndroidNotification.builder()
+                                    .setClickAction("OPEN_SCHOLARSHIP_DETAIL")
+                                    .build())
+                            .build())
                     .build();
 
-            String resp = FirebaseMessaging.getInstance().send(message);
-            log.info("[FCM] 전송 성공 msgId={} title={}", resp, title);
+            String messageId = firebaseMessaging.send(message);
+            log.debug("FCM 발송 성공: {}", messageId);
             return true;
-        } catch (Exception e) {
-            log.warn("[FCM] 전송 실패 ({}): {}", title, e.getMessage());
+        } catch (FirebaseMessagingException e) {
+            if (e.getMessagingErrorCode() == MessagingErrorCode.UNREGISTERED
+                    || e.getMessagingErrorCode() == MessagingErrorCode.INVALID_ARGUMENT) {
+                log.warn("유효하지 않은 FCM 토큰: {}", fcmToken.substring(0, Math.min(10, fcmToken.length())));
+            } else {
+                log.error("FCM 발송 실패: {}", e.getMessage());
+            }
             return false;
         }
+    }
+
+    /**
+     * 여러 사용자에게 일괄 푸시 알림 발송
+     */
+    public int sendToMultipleUsers(List<String> fcmTokens, String title, String body, Map<String, String> data) {
+        if (!isAvailable() || fcmTokens == null || fcmTokens.isEmpty()) {
+            return 0;
+        }
+
+        // FCM은 한번에 최대 500개 토큰 처리
+        int successCount = 0;
+        for (int i = 0; i < fcmTokens.size(); i += 500) {
+            List<String> batch = fcmTokens.subList(i, Math.min(i + 500, fcmTokens.size()));
+
+            try {
+                MulticastMessage message = MulticastMessage.builder()
+                        .addAllTokens(batch)
+                        .setNotification(Notification.builder()
+                                .setTitle(title)
+                                .setBody(body)
+                                .build())
+                        .putAllData(data)
+                        .setAndroidConfig(AndroidConfig.builder()
+                                .setPriority(AndroidConfig.Priority.HIGH)
+                                .build())
+                        .build();
+
+                BatchResponse response = firebaseMessaging.sendEachForMulticast(message);
+                successCount += response.getSuccessCount();
+
+                if (response.getFailureCount() > 0) {
+                    log.warn("FCM 일괄 발송 일부 실패: 성공 {}, 실패 {}",
+                            response.getSuccessCount(), response.getFailureCount());
+                }
+            } catch (FirebaseMessagingException e) {
+                log.error("FCM 일괄 발송 오류: {}", e.getMessage());
+            }
+        }
+
+        return successCount;
     }
 }

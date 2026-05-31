@@ -17,8 +17,14 @@ CREATE TABLE IF NOT EXISTS `user` (
     `provider_id` VARCHAR(255) COMMENT '소셜 로그인 고유 ID',
     `fcm_token` VARCHAR(512) COMMENT 'Firebase Cloud Messaging 토큰',
     `is_active` BOOLEAN DEFAULT TRUE,
+    `terms_agreed_at` DATETIME COMMENT '서비스 이용약관 동의 시점',
+    `privacy_agreed_at` DATETIME COMMENT '개인정보 처리방침 동의 시점',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 기존 DB 업그레이드용 마이그레이션 (이미 user 테이블이 있는 경우)
+-- ALTER TABLE `user` ADD COLUMN `terms_agreed_at` DATETIME NULL COMMENT '서비스 이용약관 동의 시점';
+-- ALTER TABLE `user` ADD COLUMN `privacy_agreed_at` DATETIME NULL COMMENT '개인정보 처리방침 동의 시점';
 
 -- 2. 장학금/공모전 공고 테이블
 CREATE TABLE IF NOT EXISTS `scholarship_post` (
@@ -40,6 +46,11 @@ CREATE TABLE IF NOT EXISTS `scholarship_post` (
     `apply_period` LONGTEXT COMMENT '신청 기간 (정규식 D-Day 추출 대상)',
     `eligibility` LONGTEXT COMMENT '지원 자격',
     `amount_info` LONGTEXT COMMENT '장학금/지원금 정보',
+    `company_name` VARCHAR(500) COMMENT '채용공고 — 기관명/회사명 (category=JOB)',
+    `work_location` VARCHAR(500) COMMENT '채용공고 — 근무지역',
+    `recruitment_count` VARCHAR(100) COMMENT '채용공고 — 모집인원',
+    `employment_type` VARCHAR(100) COMMENT '채용공고 — 고용형태 (정규직/계약직/인턴)',
+    `experience_level` VARCHAR(100) COMMENT '채용공고 — 경력구분 (신입/경력)',
     `related_links` LONGTEXT,
     `content_hash` VARCHAR(64) COMMENT 'SHA-256 중복 감지용',
     `crawled_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -108,6 +119,28 @@ CREATE TABLE IF NOT EXISTS `crawl_error_log` (
     `target_url` VARCHAR(2000) NOT NULL,
     `error_message` TEXT,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 9. 어드민 KV 설정 저장소
+--    key: algorithm.weights / settings.general / settings.crawl
+CREATE TABLE IF NOT EXISTS `admin_config` (
+    `config_key` VARCHAR(100) PRIMARY KEY,
+    `value_json` LONGTEXT NOT NULL,
+    `updated_at` DATETIME NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 10. 어드민 일괄 알림 발송 이력
+CREATE TABLE IF NOT EXISTS `push_batch` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `title` VARCHAR(200) NOT NULL,
+    `body` VARCHAR(1000) NOT NULL,
+    `segment` VARCHAR(100),
+    `deep_link` VARCHAR(500),
+    `recipients_count` INT NOT NULL DEFAULT 0,
+    `delivered_count` INT NOT NULL DEFAULT 0,
+    `open_rate` DOUBLE NOT NULL DEFAULT 0,
+    `sent_at` DATETIME NOT NULL,
+    INDEX `idx_push_batch_sent` (`sent_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================

@@ -5,6 +5,11 @@
 inha-catch-server/.env
 inha-catch-app/.env
 inha-catch-server/src/main/resources/application-local.properties
+inha-catch-server/src/main/resources/firebase-service-account.json
+inha-catch-server/local.properties
+
+# 환경별 Claude Code 설정 (개인 환경 종속)
+.claude/settings.local.json
 
 # Firebase 서비스 계정 키 (절대 커밋 금지)
 **/firebase-service-account*.json

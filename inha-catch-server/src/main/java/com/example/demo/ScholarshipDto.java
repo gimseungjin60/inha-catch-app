@@ -23,10 +23,22 @@ public class ScholarshipDto {
     private boolean notice;
     private boolean hasAttachment;
 
+    private String category; // SCHOLARSHIP / CONTEST / JOB / NOTICE
+
     private String content;
     private String applyPeriod;
     private String eligibility;
     private String amountInfo;
+
+    // 채용공고 전용 (category=JOB)
+    private String companyName;
+    private String workLocation;
+    private String recruitmentCount;
+    private String employmentType;
+    private String experienceLevel;
+
+    // 사전 생성된 요약 (잡알리오처럼 구조화된 데이터 — AI 호출 스킵)
+    private String prebuiltSummary;
 
     private List<String> relatedLinks = new ArrayList<>();
     private List<AttachmentDto> attachments = new ArrayList<>();

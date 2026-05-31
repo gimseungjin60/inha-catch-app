@@ -50,6 +50,12 @@ public class User {
     @Column(name = "is_active")
     private Boolean isActive = true;
 
+    @Column(name = "terms_agreed_at")
+    private LocalDateTime termsAgreedAt;
+
+    @Column(name = "privacy_agreed_at")
+    private LocalDateTime privacyAgreedAt;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
@@ -95,7 +101,13 @@ public class User {
 
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean active) { isActive = active; }
-    
+
+    public LocalDateTime getTermsAgreedAt() { return termsAgreedAt; }
+    public void setTermsAgreedAt(LocalDateTime termsAgreedAt) { this.termsAgreedAt = termsAgreedAt; }
+
+    public LocalDateTime getPrivacyAgreedAt() { return privacyAgreedAt; }
+    public void setPrivacyAgreedAt(LocalDateTime privacyAgreedAt) { this.privacyAgreedAt = privacyAgreedAt; }
+
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }
