@@ -20,6 +20,11 @@ import java.util.List;
                         name = "uk_source_board_article",
                         columnNames = {"source_site", "board_id", "article_id"}
                 )
+        },
+        indexes = {
+                @Index(name = "idx_article_id", columnList = "article_id"),
+                @Index(name = "idx_posted_at", columnList = "posted_at"),
+                @Index(name = "idx_content_hash", columnList = "content_hash")
         }
 )
 @Getter
@@ -88,6 +93,22 @@ public class Scholarship {
     @Column(name = "amount_info", columnDefinition = "LONGTEXT")
     private String amountInfo;
 
+    // 채용공고 전용 필드 (category=JOB일 때 사용)
+    @Column(name = "company_name", length = 500)
+    private String companyName;
+
+    @Column(name = "work_location", length = 500)
+    private String workLocation;
+
+    @Column(name = "recruitment_count", length = 100)
+    private String recruitmentCount;
+
+    @Column(name = "employment_type", length = 100)
+    private String employmentType;
+
+    @Column(name = "experience_level", length = 100)
+    private String experienceLevel;
+
     @Lob
     @Column(name = "related_links", columnDefinition = "LONGTEXT")
     private String relatedLinks;
@@ -109,6 +130,9 @@ public class Scholarship {
     @Transient
     public String getDDay() {
         java.time.LocalDate endDate = parseLatestDate(applyPeriod);
+        // applyPeriod 비어있을 때만 AI 요약에서 폴백 (title은 "2026-1차" 같은 오파싱 위험)
+        if (endDate == null) endDate = parseLatestDate(detailSummary);
+        if (endDate == null) endDate = parseLatestDate(basicSummary);
         if (endDate == null) return "상시";
         long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), endDate);
         if (daysBetween < 0) return "마감";
@@ -129,7 +153,7 @@ public class Scholarship {
         int currentYear = java.time.LocalDate.now().getYear();
 
         try {
-            // 1) yyyy[-./ ]M[-./ ]d  (공백/점/슬래시/하이픈 모두 허용)
+            // 1) yyyy[-./ ]M[-./ ]d
             java.util.regex.Matcher m1 = java.util.regex.Pattern
                     .compile("(\\d{4})\\s*[-./]\\s*(\\d{1,2})\\s*[-./]\\s*(\\d{1,2})")
                     .matcher(text);
@@ -155,20 +179,37 @@ public class Scholarship {
                 } catch (Exception ignored) {}
             }
 
-            // 3) 연도 없는 M월 d일
+            // 3) 연도 없는 M월 d일 → 올해로 가정
             java.util.regex.Matcher m3 = java.util.regex.Pattern
                     .compile("(?<!\\d)(\\d{1,2})\\s*월\\s*(\\d{1,2})\\s*일")
                     .matcher(text);
             while (m3.find()) {
                 try {
-                    int month = Integer.parseInt(m3.group(1));
-                    int day = Integer.parseInt(m3.group(2));
-                    candidates.add(java.time.LocalDate.of(currentYear, month, day));
+                    candidates.add(java.time.LocalDate.of(
+                            currentYear,
+                            Integer.parseInt(m3.group(1)),
+                            Integer.parseInt(m3.group(2))));
                 } catch (Exception ignored) {}
+            }
+
+            // 4) 연도 없는 M[./]d → 올해로 가정 (단, yyyy 매칭 안 된 경우만)
+            if (candidates.isEmpty()) {
+                java.util.regex.Matcher m4 = java.util.regex.Pattern
+                        .compile("(?<!\\d)(\\d{1,2})\\s*[./]\\s*(\\d{1,2})(?!\\d)")
+                        .matcher(text);
+                while (m4.find()) {
+                    try {
+                        candidates.add(java.time.LocalDate.of(
+                                currentYear,
+                                Integer.parseInt(m4.group(1)),
+                                Integer.parseInt(m4.group(2))));
+                    } catch (Exception ignored) {}
+                }
             }
         } catch (Exception ignored) {}
 
         if (candidates.isEmpty()) return null;
-        return candidates.stream().max(java.time.LocalDate::compareTo).orElse(null);
+        // 가장 늦은 날짜 (보통 마감일)
+        return java.util.Collections.max(candidates);
     }
 }

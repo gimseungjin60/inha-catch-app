@@ -1,15 +1,15 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, router as globalRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
+import { DevSettings, Platform } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import { setOnAuthFailure } from '@/api/axios';
-import { initKakao } from '@/lib/kakao';
-import { initFcm } from '@/lib/fcm';
-import { initSentry } from '@/lib/sentry';
+import { clearAuthTokens, migrateLegacyAuthTokens } from '@/lib/secureStorage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -27,19 +27,16 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    'Pretendard-Regular': require('../assets/fonts/Pretendard-Regular.otf'),
+    'Pretendard-Medium': require('../assets/fonts/Pretendard-Medium.otf'),
+    'Pretendard-SemiBold': require('../assets/fonts/Pretendard-SemiBold.otf'),
+    'Pretendard-Bold': require('../assets/fonts/Pretendard-Bold.otf'),
   });
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
-
-  // 네이티브 SDK 초기화 (prebuild 후 실기기/시뮬레이터에서만 동작. Expo Go는 무시)
-  useEffect(() => {
-    initSentry();
-    initKakao();
-    initFcm();
-  }, []);
 
   useEffect(() => {
     if (loaded) {
@@ -55,19 +52,38 @@ export default function RootLayout() {
 }
 
 import { BookmarkProvider } from '@/context/BookmarkContext';
+import { ApplicationProvider } from '@/context/ApplicationContext';
 import { UserProvider, useUser } from '@/context/UserContext';
+import { useNotificationSetup } from '@/hooks/useNotifications';
 
 function AuthFailureHandler() {
-  const router = useRouter();
-  const { updateProfile } = useUser();
-
   useEffect(() => {
-    setOnAuthFailure(async () => {
-      await updateProfile({ name: '', major: '', grade: '', keywords: [], isLoggedIn: false });
-      router.replace('/login');
-    });
-  }, [router, updateProfile]);
+    // 첫 마운트 시 기존 AsyncStorage 토큰을 SecureStore 로 1회 이관
+    migrateLegacyAuthTokens().catch(() => {});
 
+    let authFailureInFlight = false;
+    setOnAuthFailure(async () => {
+      if (authFailureInFlight) return; // 동시 다발 401 중복 처리 방지
+      authFailureInFlight = true;
+      await clearAuthTokens();
+      await AsyncStorage.multiRemove([
+        '@user_profile', '@bookmarks', '@cache_scholarships'
+      ]);
+      // 401 시 앱 전체 리로드 → 토큰 비었으니 / 환영 화면으로 시작
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined') window.location.reload();
+      } else {
+        DevSettings.reload();
+      }
+    });
+  }, []);
+
+  return null;
+}
+
+function NotificationInitializer() {
+  const { profile } = useUser();
+  useNotificationSetup(profile.isLoggedIn);
   return null;
 }
 
@@ -77,15 +93,24 @@ function RootLayoutNav() {
   return (
     <UserProvider>
       <BookmarkProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <AuthFailureHandler />
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="admin" options={{ headerShown: false }} />
-            <Stack.Screen name="legal" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-          </Stack>
-        </ThemeProvider>
+        <ApplicationProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <AuthFailureHandler />
+            <NotificationInitializer />
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="login" />
+              <Stack.Screen name="signup" />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="admin" />
+              <Stack.Screen name="details/[id]" />
+              <Stack.Screen name="applications" />
+              <Stack.Screen name="agree-terms" />
+              <Stack.Screen name="legal/terms" />
+              <Stack.Screen name="legal/privacy" />
+            </Stack>
+          </ThemeProvider>
+        </ApplicationProvider>
       </BookmarkProvider>
     </UserProvider>
   );

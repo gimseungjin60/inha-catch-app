@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '@/api/axios';
+import { useUser } from '@/context/UserContext';
 
 type BookmarkContextType = {
   bookmarkedIds: number[];
@@ -18,6 +19,8 @@ export const useBookmarks = () => useContext(BookmarkContext);
 
 export const BookmarkProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [bookmarkedIds, setBookmarkedIds] = useState<number[]>([]);
+  const { profile } = useUser();
+  const pendingIds = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     const loadBookmarks = async () => {
@@ -27,21 +30,26 @@ export const BookmarkProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setBookmarkedIds(JSON.parse(stored));
         }
 
-        // 서버에서 최신 북마크(저장한 공고) 동기화
-        const res = await api.get('/api/bookmarks');
-        if (res.data) {
-          const ids = res.data.map((item: any) => item.id);
-          setBookmarkedIds(ids);
-          await AsyncStorage.setItem('@bookmarks', JSON.stringify(ids));
+        if (profile.isLoggedIn) {
+          const res = await api.get('/api/bookmarks');
+          if (res.data) {
+            const ids = res.data.map((item: any) => item.id);
+            setBookmarkedIds(ids);
+            await AsyncStorage.setItem('@bookmarks', JSON.stringify(ids));
+          }
         }
       } catch (e) {
         console.log('Server bookmark sync skipped (offline or not logged in)');
       }
     };
     loadBookmarks();
-  }, []);
+  }, [profile.isLoggedIn]);
 
   const toggleBookmark = async (id: number) => {
+    // 연타 방지: 이미 처리 중인 ID는 무시
+    if (pendingIds.current.has(id)) return;
+    pendingIds.current.add(id);
+
     const previousIds = [...bookmarkedIds];
 
     // Optimistic UI update
@@ -54,15 +62,18 @@ export const BookmarkProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
 
     try {
-      // API 호출로 서버 DB 반영
-      await api.post(`/api/bookmarks/${id}`);
+      if (profile.isLoggedIn) {
+        await api.post(`/api/bookmarks/${id}`);
+      }
     } catch (error) {
       console.error('Bookmark server sync error:', error);
-      // 실패 시 이전 상태로 롤백
+      // 실패 시 롤백
       setBookmarkedIds(previousIds);
       AsyncStorage.setItem('@bookmarks', JSON.stringify(previousIds)).catch(e =>
         console.error('Failed to rollback bookmarks locally', e)
       );
+    } finally {
+      pendingIds.current.delete(id);
     }
   };
 

@@ -24,10 +24,29 @@ public class JwtUtil {
     private final TokenBlacklistRepository blacklistRepository;
 
     public JwtUtil(
-            @Value("${jwt.secret}") String jwtSecret,
+            @Value("${jwt.secret:}") String jwtSecret,
             TokenBlacklistRepository blacklistRepository
     ) {
-        byte[] keyBytes = Base64.getDecoder().decode(jwtSecret);
+        if (jwtSecret == null || jwtSecret.isBlank()) {
+            throw new IllegalStateException(
+                    "JWT secret 이 설정되지 않았어요. application-local.properties 의 jwt.secret " +
+                    "또는 환경변수 JWT_SECRET 을 설정해주세요. (생성: openssl rand -base64 48)"
+            );
+        }
+        byte[] keyBytes;
+        try {
+            keyBytes = Base64.getDecoder().decode(jwtSecret);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(
+                    "JWT secret 이 올바른 Base64 형식이 아니에요. openssl rand -base64 48 로 새로 생성해주세요."
+            );
+        }
+        if (keyBytes.length < 32) {
+            throw new IllegalStateException(
+                    "JWT secret 이 너무 짧아요. 최소 32바이트(256bit) 이상이어야 합니다. " +
+                    "현재: " + keyBytes.length + " bytes. (생성: openssl rand -base64 48)"
+            );
+        }
         this.key = Keys.hmacShaKeyFor(keyBytes);
         this.blacklistRepository = blacklistRepository;
     }
@@ -79,7 +98,8 @@ public class JwtUtil {
         try {
             if (isBlacklisted(token)) return false;
             Jws<Claims> claims = Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
-            return "access".equals(claims.getBody().get("type", String.class)) || claims.getBody().get("type") == null;
+            // access 토큰만 허용 (refresh 토큰이나 type이 없는 토큰 거부)
+            return "access".equals(claims.getBody().get("type", String.class));
         } catch (JwtException | IllegalArgumentException e) {
             return false;
         }

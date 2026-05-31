@@ -55,7 +55,7 @@ public class GeminiService {
         "- 무료 API 한도를 아끼기 위해 불필요한 텍스트는 90% 이상 쳐내고 알맹이만 남겨.\n\n" +
         "분석할 공고문 텍스트:\n";
 
-    @Value("${gemini.api.key}")
+    @Value("${gemini.api.key:}")
     private String apiKey;
 
     private final RestTemplate restTemplate;
@@ -65,12 +65,15 @@ public class GeminiService {
     }
 
     public String generateSummary(String promptTemplate, String content) {
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            return "Gemini API 키가 설정되지 않았습니다.";
+        }
         if (content == null || content.trim().isEmpty()) {
             return "요약할 내용이 없습니다.";
         }
 
         String truncatedContent = content.length() > 5000 ? content.substring(0, 5000) : content;
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey;
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey;
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -89,7 +92,7 @@ public class GeminiService {
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
         int retries = 0;
-        int maxRetries = 2;
+        int maxRetries = 3;
         while (retries < maxRetries) {
             try {
                 ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
@@ -106,17 +109,107 @@ public class GeminiService {
                 break;
             } catch (Exception e) {
                 String errMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-                if (errMsg.contains("429") || errMsg.contains("exhausted") || errMsg.contains("too many requests")) {
-                    log.warn("[Gemini API] 한도 초과(429) 감지. 60초 대기 후 재시도합니다... (시도 {})", retries + 1);
-                    try { Thread.sleep(60000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                boolean isTransient = errMsg.contains("429") || errMsg.contains("exhausted")
+                        || errMsg.contains("too many requests") || errMsg.contains("503")
+                        || errMsg.contains("timeout") || errMsg.contains("timed out");
+
+                if (isTransient && retries < maxRetries - 1) {
+                    long waitSec = (retries + 1) * 30L;
+                    log.warn("[Gemini API] 일시적 오류 감지. {}초 대기 후 재시도... (시도 {}/{})", waitSec, retries + 1, maxRetries);
+                    try { Thread.sleep(waitSec * 1000); } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return "[AI 요약 중단] 인터럽트 발생";
+                    }
                     retries++;
                 } else {
-                    log.error("Gemini API 호출 중 오류 발생: {}", e.getMessage());
-                    return "AI 요약 생성 중 오류가 발생했습니다.";
+                    log.error("Gemini API 호출 실패 (시도 {}/{}): {}", retries + 1, maxRetries, e.getMessage());
+                    return "[AI 요약 오류] " + (isTransient ? "API 일시적 오류" : e.getMessage());
                 }
             }
         }
-        
-        return "AI 요약을 생성하지 못했습니다.";
+
+        return "[AI 요약 실패] 최대 재시도 횟수 초과";
+    }
+
+    /**
+     * 멀티턴 채팅 응답 생성.
+     * systemPrompt: 공고 컨텍스트를 담은 지시문 (예: "다음 공고를 바탕으로 답변해...")
+     * history: [{role:"user"|"model", text:"..."}] 형태. 빈 리스트 가능.
+     * userQuestion: 이번에 받은 사용자 질문
+     */
+    public String generateChatResponse(String systemPrompt, List<Map<String, String>> history, String userQuestion) {
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            return "AI 서비스가 설정되지 않았습니다.";
+        }
+        if (userQuestion == null || userQuestion.trim().isEmpty()) {
+            return "질문 내용이 비어있습니다.";
+        }
+
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        java.util.List<Map<String, Object>> contents = new java.util.ArrayList<>();
+
+        // systemPrompt + 첫 사용자 입력을 하나의 "user" 메시지로 결합 (Gemini는 system role 미지원, 첫 user에 prepend)
+        if (history == null || history.isEmpty()) {
+            contents.add(makeContent("user", systemPrompt + "\n\n[학생 질문]\n" + userQuestion));
+        } else {
+            boolean first = true;
+            for (Map<String, String> turn : history) {
+                String role = "user".equalsIgnoreCase(turn.get("role")) ? "user" : "model";
+                String text = turn.get("text");
+                if (text == null || text.isBlank()) continue;
+                if (first && "user".equals(role)) {
+                    contents.add(makeContent("user", systemPrompt + "\n\n[학생 질문]\n" + text));
+                    first = false;
+                } else {
+                    contents.add(makeContent(role, text));
+                    first = false;
+                }
+            }
+            contents.add(makeContent("user", userQuestion));
+        }
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("contents", contents);
+
+        Map<String, Object> generationConfig = new HashMap<>();
+        generationConfig.put("maxOutputTokens", 512);
+        generationConfig.put("temperature", 0.4);
+        requestBody.put("generationConfig", generationConfig);
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                List<Map<String, Object>> candidates = (List<Map<String, Object>>) response.getBody().get("candidates");
+                if (candidates != null && !candidates.isEmpty()) {
+                    Map<String, Object> contentResp = (Map<String, Object>) candidates.get(0).get("content");
+                    if (contentResp != null) {
+                        List<Map<String, Object>> partsResp = (List<Map<String, Object>>) contentResp.get("parts");
+                        if (partsResp != null && !partsResp.isEmpty()) {
+                            Object text = partsResp.get(0).get("text");
+                            if (text != null) return text.toString();
+                        }
+                    }
+                }
+            }
+            return "응답을 가져오지 못했습니다.";
+        } catch (Exception e) {
+            log.error("Gemini chat API 호출 실패: {}", e.getMessage());
+            return "잠시 후 다시 시도해주세요.";
+        }
+    }
+
+    private Map<String, Object> makeContent(String role, String text) {
+        Map<String, Object> part = new HashMap<>();
+        part.put("text", text);
+        Map<String, Object> content = new HashMap<>();
+        content.put("role", role);
+        content.put("parts", List.of(part));
+        return content;
     }
 }

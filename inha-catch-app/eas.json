@@ -1,30 +1,18 @@
 {
   "cli": {
-    "version": ">= 5.0.0",
+    "version": ">= 18.8.1",
     "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal",
-      "env": {
-        "EXPO_PUBLIC_API_URL": ""
-      }
+      "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://preview-api.inhacatch.app"
-      }
+      "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.inhacatch.app"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {

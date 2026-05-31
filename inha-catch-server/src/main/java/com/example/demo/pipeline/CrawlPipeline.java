@@ -1,21 +1,15 @@
 package com.example.demo.pipeline;
 
-import com.example.demo.FcmService;
 import com.example.demo.GeminiService;
 import com.example.demo.ScholarshipDto;
 import com.example.demo.AttachmentDto;
-import com.example.demo.UserRepository;
-import com.example.demo.NotificationRepository;
 import com.example.demo.entity.CrawlErrorLog;
-import com.example.demo.entity.Notification;
 import com.example.demo.entity.Scholarship;
 import com.example.demo.entity.ScholarshipAttachment;
-import com.example.demo.entity.User;
 import com.example.demo.event.CrawlEvent;
 import com.example.demo.repository.CrawlErrorLogRepository;
 import com.example.demo.ScholarshipRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -25,34 +19,27 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.util.Base64;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+@Slf4j
 @Service
 public class CrawlPipeline {
-
-    private static final Logger log = LoggerFactory.getLogger(CrawlPipeline.class);
 
     private final ScholarshipRepository repository;
     private final GeminiService geminiService;
     private final CrawlErrorLogRepository errorLogRepository;
     private final TransactionTemplate transactionTemplate;
-    private final UserRepository userRepository;
-    private final NotificationRepository notificationRepository;
-    private final FcmService fcmService;
+    private final com.example.demo.NotificationService notificationService;
 
     public CrawlPipeline(ScholarshipRepository repository, GeminiService geminiService,
                          CrawlErrorLogRepository errorLogRepository, TransactionTemplate transactionTemplate,
-                         UserRepository userRepository, NotificationRepository notificationRepository,
-                         FcmService fcmService) {
+                         com.example.demo.NotificationService notificationService) {
         this.repository = repository;
         this.geminiService = geminiService;
         this.errorLogRepository = errorLogRepository;
         this.transactionTemplate = transactionTemplate;
-        this.userRepository = userRepository;
-        this.notificationRepository = notificationRepository;
-        this.fcmService = fcmService;
+        this.notificationService = notificationService;
     }
 
     private static final Pattern YEAR_FULL = Pattern.compile("20(\\d{2})");
@@ -146,13 +133,12 @@ public class CrawlPipeline {
     public void processCrawlEvent(CrawlEvent event) {
         ScholarshipDto dto = event.getScholarshipDto();
         try {
-            transactionTemplate.execute(status -> {
+            Scholarship savedPost = transactionTemplate.execute(status -> {
                 Scholarship post = repository.findBySourceSiteAndBoardIdAndArticleId(
                         dto.getSourceSite(), dto.getBoardId(), dto.getArticleId()
                 ).orElseGet(Scholarship::new);
 
                 String currentHash = calculateHash(dto.getContent() != null ? dto.getContent() : "");
-                boolean isNewPost = (post.getId() == null);
 
                 // 해시 기반 변경 감지 (존재하며 해시가 같고 요약본이 정상이면 스킵)
                 if (post.getId() != null && currentHash.equals(post.getContentHash()) && post.getBasicSummary() != null && !post.getBasicSummary().contains("오류") && !post.getBasicSummary().contains("내용이 없어")) {
@@ -162,6 +148,7 @@ public class CrawlPipeline {
 
                 // 노후화 필터: 새 게시물이면 저장 자체를 생략
                 boolean outdated = isOutdated(dto.getTitle(), dto.getContent(), dto.getApplyPeriod());
+                boolean isNewPost = (post.getId() == null);
                 if (outdated && isNewPost) {
                     log.info("[스킵] 노후화 데이터 제외: {} ({}/{})", dto.getTitle(), dto.getSourceSite(), dto.getBoardId());
                     return null;
@@ -179,15 +166,35 @@ public class CrawlPipeline {
                 post.setHasAttachment(dto.isHasAttachment());
                 post.setContent(convertContentToMarkdown(dto.getContent()));
                 post.setContentHash(currentHash);
+                if (dto.getCategory() != null) post.setCategory(dto.getCategory());
+                post.setCompanyName(dto.getCompanyName());
+                post.setWorkLocation(dto.getWorkLocation());
+                post.setRecruitmentCount(dto.getRecruitmentCount());
+                post.setEmploymentType(dto.getEmploymentType());
+                post.setExperienceLevel(dto.getExperienceLevel());
 
                 if (outdated) {
                     post.setBasicSummary(OUTDATED_SUMMARY);
                     post.setDetailSummary(OUTDATED_SUMMARY);
+                } else if (dto.getPrebuiltSummary() != null && !dto.getPrebuiltSummary().isBlank()) {
+                    // 구조화 소스(잡알리오 등)는 prebuilt 요약을 가져왔으므로 Gemini 호출 스킵
+                    String pre = dto.getPrebuiltSummary();
+                    post.setDetailSummary(pre);
+                    StringBuilder basic = new StringBuilder();
+                    for (String line : pre.split("\n")) {
+                        if (line.startsWith("상태:") || line.startsWith("지원 대상:") || line.startsWith("핵심 혜택:")) {
+                            basic.append(line).append("\n");
+                        }
+                    }
+                    post.setBasicSummary(basic.toString().trim());
                 } else if (dto.getContent() != null && !dto.getContent().trim().isEmpty()) {
                     log.info("Generating Unified AI Summary for: {}", post.getTitle());
-                    try { Thread.sleep(5000); } catch (InterruptedException e) {}
+                    try { Thread.sleep(15000); } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return null;
+                    }
                     String summary = geminiService.generateSummary(GeminiService.PROMPT_UNIFIED, dto.getContent());
-                    
+
                     if (summary.contains("SKIP_OLD") || summary.contains("SKIP_DUP")) {
                         post.setBasicSummary("[AI 요약 스킵] 본 공지는 과거 게시물이거나 단순 공지사항입니다.");
                         post.setDetailSummary("[AI 요약 스킵] 본 공지는 과거 게시물이거나 단순 공지사항입니다.");
@@ -200,7 +207,6 @@ public class CrawlPipeline {
                             }
                         }
                         post.setBasicSummary(basic.toString().trim());
-                        // extractAndSetDateFromSummary 기능을 Pipeline으로 내재화해야 하지만 Entity에 transient 로 구현되어 있음
                     }
                 } else {
                     post.setBasicSummary("본문 내용이 없어 요약할 수 없습니다.");
@@ -224,67 +230,16 @@ public class CrawlPipeline {
                 }
 
                 Scholarship saved = repository.save(post);
-
-                // 새 장학금인 경우 매칭 사용자에게 알림 생성
-                if (isNewPost) {
-                    createNotificationsForMatchingUsers(saved);
-                }
-
-                return null;
+                return isNewPost ? saved : null;
             });
+
+            // 새로 저장된 장학금이면 매칭 사용자에게 알림 발송 (DB 알림 + FCM 푸시)
+            if (savedPost != null && savedPost.getId() != null) {
+                notificationService.notifyNewScholarship(savedPost);
+            }
         } catch (Exception e) {
             log.error("Crawling Pipeline Error for {} : {}", dto.getLink(), e.getMessage());
             errorLogRepository.save(new CrawlErrorLog(dto.getLink(), e.getMessage()));
-        }
-    }
-
-    private void createNotificationsForMatchingUsers(Scholarship scholarship) {
-        try {
-            List<User> users = userRepository.findAll();
-            String title = scholarship.getTitle() != null ? scholarship.getTitle() : "";
-
-            for (User user : users) {
-                if ("ADMIN".equals(user.getRole())) continue;
-
-                boolean matched = false;
-                String reason = "";
-
-                // 학과 매칭
-                if (user.getMajor() != null && !user.getMajor().trim().isEmpty()) {
-                    if (title.contains(user.getMajor())) {
-                        matched = true;
-                        reason = user.getMajor() + " 학과 관련";
-                    }
-                }
-
-                // 키워드 매칭
-                if (!matched && user.getKeywords() != null && !user.getKeywords().trim().isEmpty()) {
-                    String[] keywords = user.getKeywords().split(",");
-                    for (String kw : keywords) {
-                        String trimmed = kw.trim();
-                        if (!trimmed.isEmpty() && title.contains(trimmed)) {
-                            matched = true;
-                            reason = "'" + trimmed + "' 키워드 매칭";
-                            break;
-                        }
-                    }
-                }
-
-                if (matched) {
-                    String notiTitle = "새 장학금/공모전 등록";
-                    String message = "[" + reason + "] " + title;
-                    if (message.length() > 200) message = message.substring(0, 197) + "...";
-
-                    notificationRepository.save(new Notification(user, scholarship, "NEW", notiTitle, message));
-
-                    // FCM 푸시 (토큰 있고 Firebase 설정된 경우만 실제 전송)
-                    if (user.getFcmToken() != null && !user.getFcmToken().isBlank()) {
-                        fcmService.sendToDevice(user.getFcmToken(), notiTitle, message, scholarship.getId());
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("알림 생성 중 오류 (장학금 저장에는 영향 없음): {}", e.getMessage());
         }
     }
 }

@@ -1,463 +1,556 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, Pressable, SafeAreaView, TouchableOpacity, Image, Dimensions, FlatList } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import api from '@/api/axios';
-import * as WebBrowser from 'expo-web-browser';
-import { Calendar, Info, ChevronLeft, Bookmark, RefreshCw, Sparkles } from 'lucide-react-native';
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useBookmarks } from '@/context/BookmarkContext';
-import Markdown from 'react-native-markdown-display';
+import React, { useEffect, useState } from 'react'
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Platform,
+  Pressable,
+} from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import api from '@/api/axios'
+import { getJwtToken } from '@/lib/secureStorage'
+import * as WebBrowser from 'expo-web-browser'
+import { ChevronLeft, Bookmark, RefreshCw, ExternalLink } from 'lucide-react-native'
+import Colors from '@/constants/Colors'
+import Fonts from '@/constants/Fonts'
+import { useColorScheme } from '@/components/useColorScheme'
+import { useBookmarks } from '@/context/BookmarkContext'
+import { useUser } from '@/context/UserContext'
+import { useApplications, STATUS_ORDER, STATUS_LABEL, ApplicationStatus } from '@/context/ApplicationContext'
+import ScholarshipChat from '@/components/ScholarshipChat'
+import Markdown from 'react-native-markdown-display'
 
-const IMAGE_EXT_RE = /\.(jpe?g|png|gif|webp|bmp)(\?|$)/i;
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-// 타입 정의
 interface Scholarship {
-  id: number;
-  title: string;
-  category: string;
-  basicSummary?: string;
-  detailSummary?: string;
-  dDay?: string;
-  isRecommended: boolean;
-  author?: string;
-  postedAt?: string;
-  viewCount?: number;
-  eligibility?: string;
-  amountInfo?: string;
-  applyPeriod?: string;
-  content?: string;
-  postUrl?: string;
-  relatedLinks?: string;
-  recommendReasons?: string[];
+  id: number
+  title: string
+  category: string
+  basicSummary?: string
+  detailSummary?: string
+  dDay: string
+  isRecommended: boolean
+  author?: string
+  postedAt?: string
+  viewCount?: number
+  eligibility?: string
+  amountInfo?: string
+  applyPeriod?: string
+  content?: string
+  postUrl?: string
+  sourceSite?: string
+}
+
+function parseDDayNumber(dDay: string): number | null {
+  if (!dDay) return null
+  if (dDay === 'D-Day') return 0
+  if (dDay === '마감') return -1
+  const m = dDay.match(/^D-(\d+)$/)
+  if (m) return parseInt(m[1], 10)
+  return null
+}
+
+const categoryLabel = (c: string): string => {
+  const norm = c?.toLowerCase()
+  if (norm === 'scholarship' || c === 'SCHOLARSHIP') return '장학금'
+  if (norm === 'contest' || c === 'CONTEST') return '공모전'
+  if (c === 'NOTICE') return '공지'
+  return c || '공고'
 }
 
 export default function DetailScreen() {
-  const { id } = useLocalSearchParams();
-  const router = useRouter();
-  const colorScheme = useColorScheme() ?? 'light';
-  const colors = Colors[colorScheme];
-  const { toggleBookmark, isBookmarked } = useBookmarks();
+  const { id } = useLocalSearchParams()
+  const router = useRouter()
+  const colorScheme = useColorScheme() ?? 'light'
+  const colors = Colors[colorScheme]
+  const { toggleBookmark, isBookmarked } = useBookmarks()
+  const { profile } = useUser()
+  const { getStatus, setStatus, clearStatus } = useApplications()
 
-  const [detail, setDetail] = useState<Scholarship | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<Scholarship | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchDetail = async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true)
+    setError(null)
     try {
-      const res = await api.get(`/api/scholarships/${id}`);
-      setDetail(res.data);
+      const res = await api.get(`/api/scholarships/${id}`)
+      setDetail(res.data)
     } catch (err: any) {
-      console.error("상세 데이터 로딩 실패:", err);
+      console.error('상세 데이터 로딩 실패:', err)
       if (err.response?.status === 404) {
-        setDetail(null);
+        setDetail(null)
       } else {
-        setError('데이터를 불러오지 못했습니다.');
+        setError('데이터를 불러오지 못했습니다.')
       }
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   useEffect(() => {
-    fetchDetail();
-  }, [id]);
-
-  const images = useMemo<string[]>(() => {
-    if (!detail?.relatedLinks) return [];
-    return detail.relatedLinks
-      .split('\n')
-      .map(s => s.trim())
-      .filter(u => u.startsWith('http') && IMAGE_EXT_RE.test(u));
-  }, [detail?.relatedLinks]);
+    fetchDetail()
+    if (profile.isLoggedIn && id) {
+      ;(async () => {
+        const token = await getJwtToken()
+        if (!token) return
+        api.post('/api/user/view-log', { scholarshipId: Number(id) }).catch(() => {})
+      })()
+    }
+  }, [id])
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.screenBackground || '#f8fafc' }]}>
-        <View style={[styles.header, { backgroundColor: colors.cardBackground || '#fff' }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <ChevronLeft color={colors.text || '#1e293b'} size={28} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.text || '#1e293b' }]}>상세 정보</Text>
-          <View style={{ width: 28 }} />
-        </View>
-        <View style={styles.contentContainer}>
-          <View style={[styles.skeletonBlock, { backgroundColor: colors.cardBackground, height: 200 }]} />
-          <View style={[styles.skeletonBlock, { backgroundColor: colors.cardBackground, height: 120, marginTop: 16 }]} />
-          <View style={[styles.skeletonBlock, { backgroundColor: colors.cardBackground, height: 160, marginTop: 16 }]} />
-        </View>
-      </SafeAreaView>
-    );
+      <View style={[styles.centered, { backgroundColor: colors.paper }]}>
+        <ActivityIndicator size="small" color={colors.signal} />
+      </View>
+    )
   }
 
   if (error) {
     return (
-      <View style={[styles.centered, { backgroundColor: colors.screenBackground || '#f8fafc' }]}>
-        <Text style={{ color: colors.textSecondary || '#666', marginBottom: 16 }}>{error}</Text>
-        <Pressable onPress={fetchDetail} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary || '#2563eb', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 }}>
-          <RefreshCw size={16} color="#FFF" />
-          <Text style={{ color: '#FFF', fontWeight: 'bold', marginLeft: 6 }}>다시 시도</Text>
+      <SafeAreaView style={[styles.centered, { backgroundColor: colors.paper }]}>
+        <Text style={[styles.emptyText, { color: colors.stone400 }]}>{error}</Text>
+        <Pressable
+          onPress={fetchDetail}
+          style={[styles.retryBtn, { backgroundColor: colors.ink }]}
+        >
+          <RefreshCw size={14} color={colors.paper} />
+          <Text style={[styles.retryBtnText, { color: colors.paper }]}>다시 시도</Text>
         </Pressable>
-      </View>
-    );
+      </SafeAreaView>
+    )
   }
 
   if (!detail) {
     return (
-      <View style={[styles.centered, { backgroundColor: colors.screenBackground || '#f8fafc' }]}>
-        <Text style={{ color: colors.text || '#000' }}>데이터를 찾을 수 없습니다.</Text>
-      </View>
-    );
+      <SafeAreaView style={[styles.centered, { backgroundColor: colors.paper }]}>
+        <Text style={[styles.emptyText, { color: colors.stone400 }]}>공고를 찾을 수 없어요.</Text>
+        <Pressable onPress={() => router.back()} hitSlop={8}>
+          <Text style={[styles.linkText, { color: colors.ink }]}>← 돌아가기</Text>
+        </Pressable>
+      </SafeAreaView>
+    )
   }
 
+  const bookmarked = isBookmarked(detail.id)
+  const dDayNum = parseDDayNumber(detail.dDay)
+  const isUrgent = dDayNum !== null && dDayNum >= 0 && dDayNum <= 3
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.screenBackground || '#f8fafc' }]}>
-      <View style={[styles.header, { backgroundColor: colors.cardBackground || '#fff' }]}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-          accessibilityLabel="뒤로 가기"
-          accessibilityRole="button"
-        >
-           <ChevronLeft color={colors.text || '#1e293b'} size={28} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text || '#1e293b' }]} numberOfLines={1}>상세 정보</Text>
-        <TouchableOpacity
-          onPress={() => detail && toggleBookmark(detail.id)}
-          accessibilityLabel={detail && isBookmarked(detail.id) ? '북마크 해제' : '북마크 추가'}
-          accessibilityRole="button"
-          accessibilityState={{ selected: !!(detail && isBookmarked(detail.id)) }}
-        >
-          <Bookmark size={28} color={colors.primary || '#2563eb'} fill={detail && isBookmarked(detail.id) ? (colors.primary || '#2563eb') : 'transparent'} />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-        {images.length > 0 && (
-          <View style={styles.heroWrap}>
-            <FlatList
-              data={images}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(uri, idx) => `${idx}-${uri}`}
-              renderItem={({ item }) => (
-                <Image source={{ uri: item }} style={styles.heroImage} resizeMode="cover" />
-              )}
-            />
-            {images.length > 1 && (
-              <View style={styles.heroCountBadge}>
-                <Text style={styles.heroCountText}>{images.length}장</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        <View style={[styles.titleCard, { backgroundColor: colors.cardBackground || '#fff' }]}>
-          <Text style={[styles.category, { color: colors.primary || '#2563eb' }]}>
-            {detail.category === 'scholarship' ? '장학금' : (detail.category === 'contest' ? '공모전' : detail.category)}
+    <View style={[styles.container, { backgroundColor: colors.paper }]}>
+      <SafeAreaView edges={['top']} style={{ backgroundColor: colors.paper }}>
+        <View style={[styles.topBar, { borderBottomColor: colors.stone100 }]}>
+          <Pressable onPress={() => router.back()} hitSlop={10} style={styles.iconBtn}>
+            <ChevronLeft size={22} strokeWidth={1.5} color={colors.ink} />
+          </Pressable>
+          <Text style={[styles.topBarTitle, { color: colors.stone400 }]} numberOfLines={1}>
+            상세 ─ DETAIL
           </Text>
-          <Text style={[styles.title, { color: colors.text || '#0f172a' }]}>{detail.title}</Text>
+          <Pressable onPress={() => toggleBookmark(detail.id)} hitSlop={10} style={styles.iconBtn}>
+            <Bookmark
+              size={20}
+              strokeWidth={1.5}
+              color={bookmarked ? colors.ink : colors.stone400}
+              fill={bookmarked ? colors.ink : 'transparent'}
+            />
+          </Pressable>
+        </View>
+      </SafeAreaView>
 
-          {detail.recommendReasons && detail.recommendReasons.length > 0 && (
-            <View style={styles.reasonsRow}>
-              {detail.recommendReasons.slice(0, 4).map((reason, idx) => (
-                <View key={idx} style={[styles.reasonChip, { backgroundColor: colors.aiBoxBackground || '#eff6ff' }]}>
-                  <Text style={[styles.reasonChipText, { color: colors.primary || '#2563eb' }]}>{reason}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-          <View style={styles.infoRow}>
-            <Calendar size={16} color="#64748b" />
-            <Text style={styles.dDay}>마감 기한: </Text>
-            <View style={[
-              styles.ddayChip,
-              detail.dDay === '마감' ? { backgroundColor: '#FEE2E2' } :
-              (detail.dDay === 'D-Day' || (detail.dDay?.startsWith('D-') && parseInt(detail.dDay.replace('D-',''),10) <= 3)) ? { backgroundColor: '#FEF3C7' } :
-              { backgroundColor: '#DBEAFE' }
-            ]}>
-              <Text style={[
-                styles.ddayChipText,
-                detail.dDay === '마감' ? { color: '#DC2626' } :
-                (detail.dDay === 'D-Day' || (detail.dDay?.startsWith('D-') && parseInt(detail.dDay.replace('D-',''),10) <= 3)) ? { color: '#D97706' } :
-                { color: '#2563EB' }
-              ]}>
-                {detail.dDay || detail.applyPeriod || '상시'}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Hero */}
+        <View style={styles.heroSection}>
+          <Text style={[styles.meta, { color: colors.stone400 }]}>
+            {categoryLabel(detail.category)}
+            {detail.sourceSite ? ` ─ ${detail.sourceSite}` : ''}
+          </Text>
+          <Text style={[styles.title, { color: colors.ink }]}>{detail.title}</Text>
+
+          <View style={styles.dDayRow}>
+            {isUrgent && <View style={[styles.urgentDot, { backgroundColor: colors.critical }]} />}
+            <Text style={[styles.dDayText, { color: colors.ink }]}>
+              {detail.dDay || detail.applyPeriod || '상시'}
+            </Text>
+            {detail.viewCount != null && (
+              <Text style={[styles.viewCount, { color: colors.stone400 }]}>
+                · 조회 {detail.viewCount.toLocaleString()}
               </Text>
-            </View>
+            )}
           </View>
         </View>
 
-        <View style={[styles.section, { backgroundColor: colors.cardBackground || '#fff' }]}>
-          <View style={styles.sectionTitleRow}>
-            <Info size={20} color={colors.primary || '#2563eb'} />
-            <Text style={[styles.sectionTitle, { color: colors.text || '#1e293b' }]}>💡 모집 요약 (AI)</Text>
-          </View>
-          <View style={[styles.summaryBox, { backgroundColor: colors.aiBoxBackground || '#eff6ff', borderLeftColor: colors.primary || '#2563eb' }]}>
+        <View style={[styles.divider, { backgroundColor: colors.stone100 }]} />
+
+        {/* 지원 상태 */}
+        {profile.isLoggedIn && (
+          <>
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: colors.stone400 }]}>
+                지원 상태 ─ STATUS
+              </Text>
+              <View style={styles.statusRow}>
+                {STATUS_ORDER.map((s) => {
+                  const active = getStatus(detail.id) === s
+                  return (
+                    <Pressable
+                      key={s}
+                      onPress={() => (active ? clearStatus(detail.id) : setStatus(detail.id, s))}
+                      style={[
+                        styles.statusChip,
+                        {
+                          backgroundColor: active ? colors.ink : colors.stone50,
+                          borderColor: active ? colors.ink : colors.stone100,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusChipText,
+                          { color: active ? colors.paper : colors.stone400 },
+                        ]}
+                      >
+                        {STATUS_LABEL[s]}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+            </View>
+            <View style={[styles.divider, { backgroundColor: colors.stone100 }]} />
+          </>
+        )}
+
+        {/* AI 요약 */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionLabel, { color: colors.stone400 }]}>AI 요약 ─ SUMMARY</Text>
+          <View
+            style={[
+              styles.aiBox,
+              { backgroundColor: colors.signalSoft },
+            ]}
+          >
+            <View style={[styles.aiMarker, { backgroundColor: colors.signal }]} />
             {detail.detailSummary ? (
-              <Markdown 
-                style={{ 
-                  body: { ...styles.summaryText, color: colors.primary || '#1e40af' },
-                  bullet_list: { marginTop: 0, marginBottom: 0 }
+              <Markdown
+                style={{
+                  body: { ...markdownBody, color: colors.ink, fontFamily: Fonts.regular },
+                  paragraph: { marginTop: 0, marginBottom: 6 },
+                  bullet_list: { marginTop: 0, marginBottom: 0 },
+                  list_item: { marginBottom: 4 },
+                  strong: { fontFamily: Fonts.semibold },
                 }}
               >
                 {detail.detailSummary}
               </Markdown>
+            ) : detail.basicSummary ? (
+              <Text style={[styles.aiText, { color: colors.ink }]}>{detail.basicSummary}</Text>
             ) : (
-              <Text style={[styles.summaryText, { color: colors.primary || '#1e40af' }]}>AI 요약 정보가 없습니다.</Text>
+              <Text style={[styles.aiText, { color: colors.stone400 }]}>AI 요약이 아직 없어요.</Text>
             )}
           </View>
         </View>
-        
-        {/* 핵심 정보 카드 */}
+
+        {/* 핵심 정보 */}
         {(detail.eligibility || detail.amountInfo || detail.applyPeriod) && (
-          <View style={[styles.section, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.sectionTitle, { color: colors.text || '#1e293b', marginBottom: 16 }]}>핵심 정보</Text>
-            {detail.eligibility && (
-              <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: colors.primary || '#2563eb' }]}>지원 자격</Text>
-                <Text style={[styles.infoValue, { color: colors.text || '#334155' }]}>{detail.eligibility}</Text>
-              </View>
-            )}
-            {detail.amountInfo && (
-              <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: colors.primary || '#2563eb' }]}>지원 금액</Text>
-                <Text style={[styles.infoValue, { color: colors.text || '#334155' }]}>{detail.amountInfo}</Text>
-              </View>
-            )}
-            {detail.applyPeriod && (
-              <View style={[styles.infoItem, { borderBottomWidth: 0, paddingBottom: 0, marginBottom: 0 }]}>
-                <Text style={[styles.infoLabel, { color: colors.primary || '#2563eb' }]}>신청 기간</Text>
-                <Text style={[styles.infoValue, { color: colors.text || '#334155' }]}>{detail.applyPeriod}</Text>
-              </View>
-            )}
-          </View>
+          <>
+            <View style={[styles.divider, { backgroundColor: colors.stone100 }]} />
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: colors.stone400 }]}>
+                핵심 정보 ─ KEY FACTS
+              </Text>
+              {detail.eligibility && (
+                <InfoRow label="지원 자격" value={detail.eligibility} colors={colors} />
+              )}
+              {detail.amountInfo && (
+                <InfoRow label="지원 금액" value={detail.amountInfo} colors={colors} />
+              )}
+              {detail.applyPeriod && (
+                <InfoRow label="신청 기간" value={detail.applyPeriod} colors={colors} />
+              )}
+            </View>
+          </>
         )}
 
-        <View style={[styles.section, { backgroundColor: colors.cardBackground || '#fff' }]}>
-           <Text style={[styles.sectionTitle, { color: colors.text || '#1e293b', marginBottom: 12 }]}>상세 내용</Text>
-           {detail.content ? (
-             <Markdown
-               style={{
-                 body: { color: colors.textSecondary || '#475569', fontSize: 15, lineHeight: 26 },
-                 heading2: { color: colors.text || '#0f172a', fontSize: 17, fontWeight: '700', marginTop: 14, marginBottom: 8 },
-                 heading3: { color: colors.text || '#0f172a', fontSize: 15, fontWeight: '700', marginTop: 10, marginBottom: 6 },
-                 strong: { color: colors.text || '#0f172a', fontWeight: '700' },
-                 bullet_list: { marginVertical: 4 },
-                 list_item: { marginVertical: 2 },
-                 blockquote: {
-                   backgroundColor: colors.aiBoxBackground || '#eff6ff',
-                   borderLeftColor: colors.primary || '#2563eb',
-                   borderLeftWidth: 4,
-                   paddingHorizontal: 12,
-                   paddingVertical: 8,
-                   marginVertical: 8,
-                 },
-               }}
-             >
-               {detail.content}
-             </Markdown>
-           ) : (
-             <Text style={[styles.fullContent, { color: colors.textSecondary || '#64748b' }]}>본문 내용이 없습니다.</Text>
-           )}
-        </View>
+        {/* 본문 */}
+        {detail.content && (
+          <>
+            <View style={[styles.divider, { backgroundColor: colors.stone100 }]} />
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: colors.stone400 }]}>
+                상세 내용 ─ DETAILS
+              </Text>
+              <Text style={[styles.contentText, { color: colors.ink }]}>{detail.content}</Text>
+            </View>
+          </>
+        )}
 
-        <View style={[styles.section, { backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0, marginTop: 10, padding: 0 }]}>
-            <TouchableOpacity
-                style={[styles.applyButton, { backgroundColor: colors.primary || '#2563eb' }]}
-                onPress={async () => {
-                    if (detail.postUrl) {
-                        await WebBrowser.openBrowserAsync(detail.postUrl);
-                    } else {
-                        alert('원문 링크가 없습니다.');
-                    }
-                }}
-                accessibilityLabel="공고 원문 보러가기"
-                accessibilityRole="button"
-                accessibilityHint="탭하면 외부 브라우저로 원문 페이지가 열립니다"
-            >
-                <Text style={styles.applyButtonText}>공고 원문 보러가기</Text>
-            </TouchableOpacity>
-        </View>
+        {/* AI 챗봇 */}
+        {profile.isLoggedIn && (
+          <>
+            <View style={[styles.divider, { backgroundColor: colors.stone100 }]} />
+            <View style={styles.section}>
+              <ScholarshipChat scholarshipId={detail.id} />
+            </View>
+          </>
+        )}
       </ScrollView>
-    </SafeAreaView>
-  );
+
+      {/* Sticky bottom CTA */}
+      <SafeAreaView edges={['bottom']} style={{ backgroundColor: colors.paper }}>
+        <View style={[styles.bottomBar, { borderTopColor: colors.stone100 }]}>
+          <Pressable
+            onPress={() => toggleBookmark(detail.id)}
+            style={[styles.bookmarkBtn, { borderColor: colors.stone100 }]}
+          >
+            <Bookmark
+              size={18}
+              strokeWidth={1.5}
+              color={bookmarked ? colors.ink : colors.stone400}
+              fill={bookmarked ? colors.ink : 'transparent'}
+            />
+            <Text style={[styles.bookmarkBtnText, { color: colors.ink }]}>
+              {bookmarked ? '저장됨' : '저장'}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={async () => {
+              if (detail.postUrl) {
+                await WebBrowser.openBrowserAsync(detail.postUrl)
+              }
+            }}
+            disabled={!detail.postUrl}
+            style={[
+              styles.primaryBtn,
+              {
+                backgroundColor: detail.postUrl ? colors.ink : colors.stone200,
+                opacity: detail.postUrl ? 1 : 0.6,
+              },
+            ]}
+          >
+            <Text style={[styles.primaryBtnText, { color: colors.paper }]}>
+              {detail.postUrl ? '원문 보러가기' : '원문 링크 없음'}
+            </Text>
+            {detail.postUrl && <ExternalLink size={14} color={colors.paper} />}
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    </View>
+  )
+}
+
+function InfoRow({ label, value, colors }: { label: string; value: string; colors: any }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={[styles.infoLabel, { color: colors.stone400 }]}>{label}</Text>
+      <Text style={[styles.infoValue, { color: colors.ink }]}>{value}</Text>
+    </View>
+  )
+}
+
+const markdownBody = {
+  fontSize: 14,
+  lineHeight: 22,
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1 },
   centered: {
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center'
-  },
-  container: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    gap: 16,
   },
-  header: {
+  topBar: {
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    paddingTop: Platform.OS === 'android' ? 40 : 16, // SafeArea fallback
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
   },
-  backButton: {
-    padding: 4,
+  iconBtn: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    flex: 1,
-    textAlign: 'center',
-    marginHorizontal: 16,
+  topBarTitle: {
+    fontFamily: Fonts.semibold,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
-  contentContainer: {
-    padding: 20,
-    paddingBottom: 40,
+  scrollContent: {
+    paddingBottom: 24,
   },
-  titleCard: {
-    padding: 24,
-    borderRadius: 24,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+  heroSection: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 24,
   },
-  category: {
-    fontWeight: '700',
-    marginBottom: 8,
-    fontSize: 14,
+  meta: {
+    fontFamily: Fonts.semibold,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 12,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '800',
+    fontFamily: Fonts.bold,
+    fontSize: 24,
+    lineHeight: 32,
+    letterSpacing: -0.5,
     marginBottom: 16,
-    lineHeight: 30,
   },
-  infoRow: {
+  dDayRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  dDay: {
-    color: '#64748b',
-    fontSize: 14,
-    fontWeight: '500',
+  urgentDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
   },
-  ddayChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 8,
+  dDayText: {
+    fontFamily: Fonts.mono,
+    fontSize: 18,
+    letterSpacing: -0.3,
   },
-  ddayChipText: {
+  viewCount: {
+    fontFamily: Fonts.regular,
     fontSize: 13,
-    fontWeight: '700',
+    marginLeft: 4,
+  },
+  divider: {
+    height: 1,
+    marginHorizontal: 24,
   },
   section: {
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
   },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  sectionLabel: {
+    fontFamily: Fonts.semibold,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
     marginBottom: 12,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+  aiBox: {
+    position: 'relative',
+    borderRadius: 12,
+    padding: 16,
+    paddingLeft: 18,
   },
-  summaryBox: {
-    padding: 20,
-    borderRadius: 16,
-    borderLeftWidth: 4,
+  aiMarker: {
+    position: 'absolute',
+    left: 0,
+    top: 16,
+    width: 3,
+    height: 24,
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 2,
   },
-  summaryText: {
-    fontSize: 15,
-    lineHeight: 24,
+  aiText: {
+    fontFamily: Fonts.regular,
+    fontSize: 14,
+    lineHeight: 22,
   },
-  fullContent: {
-    fontSize: 15,
-    lineHeight: 26,
-    letterSpacing: 0.3,
-  },
-  infoItem: {
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128,128,128,0.2)',
-    paddingBottom: 12,
-    marginBottom: 12,
+  infoRow: {
+    paddingVertical: 10,
   },
   infoLabel: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontFamily: Fonts.medium,
+    fontSize: 12,
     marginBottom: 4,
   },
   infoValue: {
-    fontSize: 15,
-    lineHeight: 22,
+    fontFamily: Fonts.regular,
+    fontSize: 14,
+    lineHeight: 21,
   },
-  applyButton: {
-    paddingVertical: 16,
-    borderRadius: 16,
+  contentText: {
+    fontFamily: Fonts.regular,
+    fontSize: 14,
+    lineHeight: 24,
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+    borderTopWidth: 1,
+  },
+  bookmarkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    height: 48,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  bookmarkBtnText: {
+    fontFamily: Fonts.semibold,
+    fontSize: 14,
+  },
+  primaryBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 48,
+    borderRadius: 10,
+  },
+  primaryBtnText: {
+    fontFamily: Fonts.semibold,
+    fontSize: 14,
+  },
+  emptyText: {
+    fontFamily: Fonts.regular,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  statusChip: {
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  applyButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '700',
+  statusChipText: {
+    fontFamily: Fonts.semibold,
+    fontSize: 13,
   },
-  heroWrap: {
-    marginBottom: 20,
-    borderRadius: 20,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  heroImage: {
-    width: SCREEN_WIDTH - 40,
-    height: 220,
-  },
-  heroCountBadge: {
-    position: 'absolute',
-    bottom: 12,
-    right: 12,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  heroCountText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  reasonsRow: {
+  retryBtn: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
     gap: 6,
-    marginTop: 12,
   },
-  reasonChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
+  retryBtnText: {
+    fontFamily: Fonts.semibold,
+    fontSize: 13,
   },
-  reasonChipText: {
-    fontSize: 12,
-    fontWeight: '600',
+  linkText: {
+    fontFamily: Fonts.semibold,
+    fontSize: 14,
   },
-  skeletonBlock: {
-    borderRadius: 16,
-    opacity: 0.6,
-  },
-});
+})

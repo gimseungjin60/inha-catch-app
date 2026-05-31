@@ -1,161 +1,261 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { Bookmark, Sparkles, Award, Trophy } from 'lucide-react-native';
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useRouter } from 'expo-router';
-import { useBookmarks } from '@/context/BookmarkContext';
+import React from 'react'
+import { View, Text, StyleSheet, Pressable } from 'react-native'
+import { Bookmark } from 'lucide-react-native'
+import Colors from '@/constants/Colors'
+import Fonts from '@/constants/Fonts'
+import { useColorScheme } from '@/components/useColorScheme'
+import { useRouter } from 'expo-router'
+import { useBookmarks } from '@/context/BookmarkContext'
 
-export interface Scholarship {
-  id: number;
-  type: 'scholarship' | 'contest';
-  isRecommended: boolean;
-  recommendReasons?: string[];
-  title: string;
-  aiSummary: string[];
-  tags: string[];
-  dDay?: string;
+export interface RecommendReason {
+  type: 'MAJOR' | 'KEYWORD' | 'DEADLINE' | 'FRESH' | 'POPULAR' | string
+  label: string
+  points: number
 }
 
-const getDDayStyle = (dDay?: string) => {
-  if (!dDay) return null;
-  if (dDay === '마감') return { bg: '#FEE2E2', text: '#DC2626', border: '#FECACA' };
-  if (dDay === 'D-Day') return { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' };
-  if (dDay.startsWith('D-')) {
-    const num = parseInt(dDay.replace('D-', ''), 10);
-    if (!isNaN(num) && num <= 3) return { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' };
-    if (!isNaN(num) && num <= 7) return { bg: '#DBEAFE', text: '#2563EB', border: '#BFDBFE' };
-  }
-  return null; // 기본 스타일 사용
-};
+export interface Scholarship {
+  id: number
+  type: 'scholarship' | 'contest' | 'job'
+  isRecommended: boolean
+  title: string
+  aiSummary: string[]
+  tags: string[]
+  dDay: string
+  reasons?: RecommendReason[]
+}
+
+function parseDDayNumber(dDay: string): number | null {
+  if (!dDay) return null
+  if (dDay === 'D-Day') return 0
+  if (dDay === '마감') return -1
+  const m = dDay.match(/^D-(\d+)$/)
+  if (m) return parseInt(m[1], 10)
+  return null
+}
 
 export default function ScholarshipCard({ item }: { item: Scholarship }) {
-  const colorScheme = useColorScheme() ?? 'light';
-  const colors = Colors[colorScheme];
-  const router = useRouter();
-  const { toggleBookmark, isBookmarked } = useBookmarks();
-  const bookmarked = isBookmarked(item.id);
-  const ddayStyle = getDDayStyle(item.dDay);
+  const colorScheme = useColorScheme() ?? 'light'
+  const colors = Colors[colorScheme]
+  const router = useRouter()
+  const { toggleBookmark, isBookmarked } = useBookmarks()
+  const bookmarked = isBookmarked(item.id)
+
+  const dDayNum = parseDDayNumber(item.dDay)
+  const isUrgent = dDayNum !== null && dDayNum >= 0 && dDayNum <= 3
+  const isClosed = item.dDay === '마감'
+  const category =
+    item.type === 'scholarship' ? '장학금' : item.type === 'contest' ? '공모전' : '채용'
 
   return (
     <Pressable
       onPress={() => router.push(`/details/${item.id}` as any)}
-      accessibilityLabel={`${item.type === 'scholarship' ? '장학금' : '공모전'} ${item.title}, 상세 보기`}
-      accessibilityRole="button"
-      accessibilityHint="탭하면 상세 정보 화면으로 이동합니다"
+      style={({ pressed }) => [
+        styles.card,
+        {
+          backgroundColor: colors.paperCard,
+          borderColor: colors.stone100,
+          opacity: pressed ? 0.92 : 1,
+        },
+      ]}
     >
-      <View style={[styles.card, { backgroundColor: colors.cardBackground }]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.badges}>
-              {/* Type Badge */}
-              <View style={[styles.typeBadge, { backgroundColor: colors.tagBackground }]}>
-                 {item.type === 'scholarship'
-                    ? <Award size={14} color={colors.primary} />
-                    : <Trophy size={14} color="#9C27B0" />}
-                 <Text style={[styles.typeBadgeText, { color: item.type === 'scholarship' ? colors.primary : '#9C27B0' }]}>
-                   {item.type === 'scholarship' ? ' 장학금' : ' 공모전'}
-                 </Text>
-              </View>
+      {/* Margin Marker — 시그니처 좌측 라인 */}
+      <View
+        style={[
+          styles.marginMarker,
+          { backgroundColor: item.isRecommended ? colors.signal : colors.stone300 },
+        ]}
+      />
 
-              {/* Recommend Badge */}
-              {item.isRecommended && (
-                <View style={[styles.recommendBadge, { backgroundColor: colors.aiBoxBackground }]}>
-                   <Sparkles size={14} color="#FF9800" />
-                   <Text style={[styles.recommendText, { color: colors.primary }]}> 추천</Text>
-                </View>
-              )}
-            </View>
-            <Pressable
-                style={{ padding: 8, margin: -8 }}
-                onPress={(e) => {
-                    e.stopPropagation();
-                    toggleBookmark(item.id);
-                }}
-                accessibilityLabel={bookmarked ? '북마크 해제' : '북마크 추가'}
-                accessibilityRole="button"
-                accessibilityState={{ selected: bookmarked }}
+      {/* 상단: 카테고리 메타 + D-day */}
+      <View style={styles.metaRow}>
+        <Text style={[styles.metaText, { color: colors.stone400 }]} numberOfLines={1}>
+          {category}
+          {item.isRecommended ? ' ─ AI 추천' : ''}
+        </Text>
+        <View style={styles.metaRight}>
+          {isUrgent && <View style={[styles.urgentDot, { backgroundColor: colors.critical }]} />}
+          <Text
+            style={[
+              styles.dDayText,
+              { color: isClosed ? colors.stone300 : colors.ink },
+            ]}
+          >
+            {item.dDay || '상시'}
+          </Text>
+        </View>
+      </View>
+
+      {/* 제목 */}
+      <Text style={[styles.title, { color: colors.ink }]} numberOfLines={2}>
+        {item.title}
+      </Text>
+
+      {/* 추천 이유 (XAI) */}
+      {item.isRecommended && item.reasons && item.reasons.length > 0 && (
+        <View style={styles.reasonRow}>
+          {item.reasons.slice(0, 3).map((r, i) => (
+            <View
+              key={i}
+              style={[styles.reasonChip, { backgroundColor: colors.signalSoft, borderColor: colors.signal }]}
             >
-              <Bookmark size={24} color={colors.primary} fill={bookmarked ? colors.primary : 'transparent'} />
-            </Pressable>
-          </View>
-
-          {/* Title */}
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
-
-          {/* 추천 이유 뱃지 */}
-          {item.isRecommended && item.recommendReasons && item.recommendReasons.length > 0 && (
-            <View style={styles.reasonsRow}>
-              {item.recommendReasons.slice(0, 3).map((reason, idx) => (
-                <View key={idx} style={[styles.reasonChip, { backgroundColor: colors.aiBoxBackground }]}>
-                  <Text style={[styles.reasonChipText, { color: colors.primary }]}>{reason}</Text>
-                </View>
-              ))}
+              <Text style={[styles.reasonText, { color: colors.signal }]} numberOfLines={1}>
+                {r.label} +{r.points}
+              </Text>
             </View>
-          )}
+          ))}
+        </View>
+      )}
 
-          {/* AI Summary Box */}
-          <View style={[styles.aiBox, { backgroundColor: colors.aiBoxBackground }]}>
-             <Text style={[styles.aiTitle, { color: colors.aiBoxText }]}>AI 요약</Text>
-             {item.aiSummary.map((line, idx) => (
-               <View key={idx} style={styles.bulletRow}>
-                 <Text style={[styles.bullet, { color: colors.textSecondary }]}>•</Text>
-                 <Text style={[styles.bulletText, { color: colors.textSecondary }]}>{line}</Text>
-               </View>
-             ))}
-          </View>
+      {/* AI 요약 박스 */}
+      {item.aiSummary && item.aiSummary.length > 0 && (
+        <View style={[styles.aiBox, { backgroundColor: colors.signalSoft }]}>
+          <Text style={[styles.aiLabel, { color: colors.stone400 }]}>AI 요약</Text>
+          {item.aiSummary.slice(0, 3).map((line, i) => (
+            <Text key={i} style={[styles.aiBullet, { color: colors.ink }]} numberOfLines={2}>
+              ─ {line}
+            </Text>
+          ))}
+        </View>
+      )}
 
-          {/* Footer (Tags & D-Day) */}
-          <View style={styles.footer}>
-             <View style={styles.tagList}>
-                {item.tags.slice(0, 2).map((tag, idx) => (
-                   <View key={idx} style={[styles.tag, { backgroundColor: colors.tagBackground }]}>
-                      <Text style={[styles.tagText, { color: colors.tagText }]}>{tag}</Text>
-                   </View>
-                ))}
-                {item.tags.length > 2 && (
-                   <Text style={[styles.moreTags, { color: colors.tagText }]}>+{item.tags.length - 2}</Text>
-                )}
-             </View>
-
-             <View style={[
-               styles.ddayBadge,
-               ddayStyle
-                 ? { backgroundColor: ddayStyle.bg, borderColor: ddayStyle.border }
-                 : { borderColor: colors.primary }
-             ]}>
-                <Text style={[styles.ddayText, { color: ddayStyle ? ddayStyle.text : colors.primary }]}>
-                  {item.dDay || '상시'}
-                </Text>
-             </View>
-          </View>
+      {/* 하단: 태그 + 북마크 */}
+      <View style={styles.footer}>
+        <View style={styles.tagRow}>
+          {item.tags.slice(0, 3).map((tag, i) => (
+            <View key={i} style={[styles.tag, { backgroundColor: colors.stone50 }]}>
+              <Text style={[styles.tagText, { color: colors.ink }]} numberOfLines={1}>
+                {tag}
+              </Text>
+            </View>
+          ))}
+        </View>
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation()
+            toggleBookmark(item.id)
+          }}
+          hitSlop={10}
+          style={styles.bookmarkBtn}
+        >
+          <Bookmark
+            size={20}
+            strokeWidth={1.5}
+            color={bookmarked ? colors.ink : colors.stone400}
+            fill={bookmarked ? colors.ink : 'transparent'}
+          />
+        </Pressable>
       </View>
     </Pressable>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: 16, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  badges: { flexDirection: 'row', gap: 8 },
-  typeBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
-  typeBadgeText: { fontSize: 12, fontWeight: '600', marginLeft: 2 },
-  recommendBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
-  recommendText: { fontSize: 12, fontWeight: '600', marginLeft: 2 },
-  title: { fontSize: 18, fontWeight: 'bold', marginBottom: 16 },
-  aiBox: { borderRadius: 12, padding: 16, marginBottom: 16 },
-  aiTitle: { fontSize: 12, fontWeight: 'bold', marginBottom: 8 },
-  bulletRow: { flexDirection: 'row', marginBottom: 4 },
-  bullet: { marginRight: 6, fontSize: 14 },
-  bulletText: { fontSize: 13, lineHeight: 18, flex: 1 },
-  footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  tagList: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  tag: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16 },
-  tagText: { fontSize: 12, fontWeight: '500' },
-  moreTags: { fontSize: 12, fontWeight: '500', marginLeft: 4 },
-  ddayBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
-  ddayText: { fontSize: 12, fontWeight: 'bold' },
-  reasonsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
-  reasonChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  reasonChipText: { fontSize: 11, fontWeight: '600' },
-});
+  card: {
+    position: 'relative',
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 16,
+    paddingLeft: 18,
+    marginBottom: 12,
+  },
+  marginMarker: {
+    position: 'absolute',
+    left: 0,
+    top: 16,
+    width: 3,
+    height: 20,
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 2,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  metaRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  metaText: {
+    fontFamily: Fonts.medium,
+    fontSize: 12,
+    flex: 1,
+    marginRight: 8,
+  },
+  dDayText: {
+    fontFamily: Fonts.mono,
+    fontSize: 20,
+    letterSpacing: -0.3,
+  },
+  urgentDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  title: {
+    fontFamily: Fonts.semibold,
+    fontSize: 16,
+    lineHeight: 22,
+    letterSpacing: -0.2,
+    marginBottom: 12,
+  },
+  aiBox: {
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  aiLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: 11,
+    marginBottom: 6,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  aiBullet: {
+    fontFamily: Fonts.regular,
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 2,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    flex: 1,
+    marginRight: 8,
+  },
+  tag: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    maxWidth: 110,
+  },
+  tagText: {
+    fontFamily: Fonts.medium,
+    fontSize: 12,
+  },
+  bookmarkBtn: {
+    padding: 4,
+  },
+  reasonRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginBottom: 10,
+  },
+  reasonChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    maxWidth: 180,
+  },
+  reasonText: {
+    fontFamily: Fonts.semibold,
+    fontSize: 10.5,
+    letterSpacing: 0.2,
+  },
+})
