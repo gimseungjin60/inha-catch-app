@@ -39,3 +39,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Firebase / FCM
+# google-services.json은 EAS Build에 업로드되어야 하므로 트래킹함
+# (안에 든 키는 클라이언트 ID라서 공개 OK. 진짜 비밀은 백엔드 firebase-service-account.json)
+# google-services.json
+GoogleService-Info.plist

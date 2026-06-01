@@ -1,201 +1,227 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, SafeAreaView, ActivityIndicator, Alert, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useUser } from '@/context/UserContext';
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { Sparkles, MessageCircle } from 'lucide-react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { loginWithKakao } from '@/hooks/useKakaoAuth';
+import React, { useEffect, useState, useRef } from 'react'
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  SafeAreaView,
+  ActivityIndicator,
+  Alert,
+  Platform,
+} from 'react-native'
+import { useRouter } from 'expo-router'
+import { useUser } from '@/context/UserContext'
+import Colors from '@/constants/Colors'
+import Fonts from '@/constants/Fonts'
+import { useColorScheme } from '@/components/useColorScheme'
+import { MessageCircle } from 'lucide-react-native'
+import { setJwtToken, setRefreshToken } from '@/lib/secureStorage'
+import { loginWithKakao } from '@/hooks/useKakaoAuth'
 
 export default function WelcomeScreen() {
-  const router = useRouter();
-  const { profile, isLoading, updateProfile } = useUser();
-  const colorScheme = useColorScheme() ?? 'light';
-  const colors = Colors[colorScheme];
-  const [isKakaoLoading, setIsKakaoLoading] = useState(false);
+  const router = useRouter()
+  const { profile, isLoading, updateProfile } = useUser()
+  const colorScheme = useColorScheme() ?? 'light'
+  const colors = Colors[colorScheme]
+  const [isKakaoLoading, setIsKakaoLoading] = useState(false)
 
   const handleKakaoLogin = async () => {
-    setIsKakaoLoading(true);
+    setIsKakaoLoading(true)
     try {
-      const result = await loginWithKakao();
+      const result = await loginWithKakao()
       if (result) {
-        await AsyncStorage.setItem('@jwt_token', result.token);
-        await AsyncStorage.setItem('@refresh_token', result.refreshToken);
+        await setJwtToken(result.token)
+        await setRefreshToken(result.refreshToken)
         await updateProfile({
           name: result.user.name,
           major: result.user.major || '',
           keywords: result.user.keywords ? result.user.keywords.split(',').filter(Boolean) : [],
           isLoggedIn: true,
           role: result.user.role || 'USER',
-        });
+          provider: result.user.provider || 'KAKAO',
+        })
         if (result.isNewUser) {
-          router.replace('/(tabs)/profile');
+          router.replace({ pathname: '/agree-terms', params: { next: '/(tabs)/profile' } } as any)
         } else {
-          router.replace('/(tabs)');
+          router.replace('/(tabs)')
         }
       }
     } catch {
-      const msg = '카카오 로그인 중 오류가 발생했습니다.';
-      Platform.OS === 'web' ? window.alert(msg) : Alert.alert('로그인 실패', msg);
+      const msg = '카카오 로그인 중 오류가 발생했습니다.'
+      Platform.OS === 'web' ? window.alert(msg) : Alert.alert('로그인 실패', msg)
     } finally {
-      setIsKakaoLoading(false);
+      setIsKakaoLoading(false)
     }
-  };
+  }
 
+  const hasRedirected = useRef(false)
   useEffect(() => {
-    if (!isLoading && profile.isLoggedIn) {
-      router.replace('/(tabs)');
+    if (!isLoading && profile.isLoggedIn && !hasRedirected.current) {
+      hasRedirected.current = true
+      router.replace('/(tabs)')
     }
-  }, [isLoading, profile.isLoggedIn]);
+  }, [isLoading, profile.isLoggedIn])
 
-  if (isLoading || profile.isLoggedIn) {
+  if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View style={[styles.loadingContainer, { backgroundColor: colors.paper }]}>
+        <ActivityIndicator size="small" color={colors.signal} />
       </View>
-    );
+    )
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.primary }]}>
-      <View style={styles.centerContent}>
-        <View style={styles.iconBox}>
-          <Sparkles color={colors.primary} size={48} />
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.paper }]}>
+      <View style={styles.top}>
+        <View style={styles.wordmarkRow}>
+          <View style={[styles.dot, { backgroundColor: colors.signal }]} />
+          <Text style={[styles.wordmark, { color: colors.stone400 }]}>INHA · CATCH</Text>
         </View>
-        <Text style={styles.title}>INHA CATCH</Text>
-        <Text style={styles.subtitle}>인하대생을 위한 단 하나의 장학금/공모전 알리미</Text>
       </View>
 
-      <View style={[styles.bottomCard, { backgroundColor: colors.screenBackground }]}>
-        <Text style={[styles.welcomeText, { color: colors.text }]}>인하캐치와 함께 시작해볼까요?</Text>
-        
-        <Pressable 
-          style={[styles.loginBtn, { backgroundColor: colors.primary }]}
-          onPress={() => router.push('/login')}
-        >
-          <Text style={styles.loginBtnText}>로그인</Text>
-        </Pressable>
-        
-        <Pressable
-          style={[styles.signupBtn, { borderColor: colors.primary }]}
-          onPress={() => router.push('/signup')}
-        >
-          <Text style={[styles.signupBtnText, { color: colors.primary }]}>무료 회원가입</Text>
-        </Pressable>
+      <View style={styles.middle}>
+        <Text style={[styles.kicker, { color: colors.signal }]}>장학금 · 공모전 큐레이션</Text>
+        <Text style={[styles.headline, { color: colors.ink }]}>
+          당신에게 딱 맞는{'\n'}
+          <Text style={{ color: colors.signal }}>기회</Text>만, 골라서.
+        </Text>
+        <Text style={[styles.subline, { color: colors.stone400 }]}>
+          인하공전 학우님을 위해,{'\n'}흩어진 기회를 매일 모아드릴게요.
+        </Text>
+      </View>
 
+      <View style={styles.bottom}>
         <Pressable
-          style={[styles.kakaoBtn, { opacity: isKakaoLoading ? 0.6 : 1 }]}
           onPress={handleKakaoLogin}
           disabled={isKakaoLoading}
+          style={[styles.kakaoBtn, { opacity: isKakaoLoading ? 0.6 : 1 }]}
         >
           {isKakaoLoading ? (
             <ActivityIndicator color="#3C1E1E" />
           ) : (
             <>
-              <MessageCircle size={20} color="#3C1E1E" fill="#3C1E1E" style={{ marginRight: 8 }} />
+              <MessageCircle size={18} color="#3C1E1E" fill="#3C1E1E" />
               <Text style={styles.kakaoBtnText}>카카오로 시작하기</Text>
             </>
           )}
         </Pressable>
+
+        <Pressable
+          onPress={() => router.push('/signup')}
+          style={[styles.outlineBtn, { borderColor: colors.stone100 }]}
+        >
+          <Text style={[styles.outlineBtnText, { color: colors.ink }]}>
+            이메일로 회원가입
+          </Text>
+        </Pressable>
+
+        <View style={styles.footerRow}>
+          <Text style={[styles.footerText, { color: colors.stone400 }]}>
+            이미 계정이 있나요?
+          </Text>
+          <Pressable onPress={() => router.push('/login')}>
+            <Text style={[styles.footerLink, { color: colors.ink }]}> 로그인 →</Text>
+          </Pressable>
+        </View>
       </View>
     </SafeAreaView>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  centerContent: {
+  container: { flex: 1, paddingHorizontal: 24 },
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
   },
-  iconBox: {
-    backgroundColor: 'white',
-    padding: 24,
-    borderRadius: 30,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 10,
+  top: {
+    paddingTop: 20,
   },
-  title: {
-    fontSize: 36,
-    fontWeight: '900',
-    color: 'white',
-    letterSpacing: 2,
-    marginBottom: 12,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  bottomCard: {
-    padding: 30,
-    paddingBottom: 50,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: -5 },
-    elevation: 20,
-  },
-  welcomeText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  loginBtn: {
-    paddingVertical: 18,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  loginBtnText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  signupBtn: {
-    paddingVertical: 18,
-    borderRadius: 16,
-    alignItems: 'center',
-    borderWidth: 2,
-    backgroundColor: 'transparent',
-  },
-  signupBtnText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  kakaoBtn: {
-    paddingVertical: 18,
-    borderRadius: 16,
-    backgroundColor: '#FEE500',
+  wordmarkRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 7,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  wordmark: {
+    fontFamily: Fonts.semibold,
+    fontSize: 11,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+  },
+  middle: {
+    flex: 1,
     justifyContent: 'center',
-    marginTop: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    alignItems: 'center',
+  },
+  kicker: {
+    fontFamily: Fonts.semibold,
+    fontSize: 12,
+    letterSpacing: 0.4,
+    marginBottom: 14,
+    textAlign: 'center',
+  },
+  headline: {
+    fontFamily: Fonts.bold,
+    fontSize: 42,
+    lineHeight: 52,
+    letterSpacing: -1.6,
+    marginBottom: 18,
+    textAlign: 'center',
+  },
+  subline: {
+    fontFamily: Fonts.regular,
+    fontSize: 15.5,
+    lineHeight: 25,
+    letterSpacing: -0.2,
+    textAlign: 'center',
+  },
+  bottom: {
+    paddingBottom: 16,
+    gap: 10,
+  },
+  kakaoBtn: {
+    flexDirection: 'row',
+    height: 50,
+    backgroundColor: '#FEE500',
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
   },
   kakaoBtnText: {
+    fontFamily: Fonts.semibold,
+    fontSize: 15,
     color: '#3C1E1E',
-    fontSize: 17,
-    fontWeight: 'bold',
   },
-});
+  outlineBtn: {
+    height: 50,
+    borderWidth: 1,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  outlineBtnText: {
+    fontFamily: Fonts.semibold,
+    fontSize: 14,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  footerText: {
+    fontFamily: Fonts.regular,
+    fontSize: 13,
+  },
+  footerLink: {
+    fontFamily: Fonts.semibold,
+    fontSize: 13,
+  },
+})

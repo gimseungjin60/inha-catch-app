@@ -1,0 +1,12 @@
+**/node_modules
+**/build
+**/.gradle
+**/.idea
+**/.vscode
+**/*.log
+**/.env
+**/.env.*
+!**/.env.example
+**/secrets
+**/firebase-service-account*.json
+inha-catch-app

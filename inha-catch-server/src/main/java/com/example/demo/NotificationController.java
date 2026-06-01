@@ -58,7 +58,7 @@ public class NotificationController {
 
         // 본인의 알림만 읽음 처리 가능
         if (!notification.getUser().getId().equals(user.getId())) {
-            return ResponseEntity.status(403).body(Map.of("message", "권한이 없습니다."));
+            return ResponseEntity.status(403).body(Map.of("message", "해당 알림에 대한 권한이 없습니다."));
         }
 
         notification.setRead(true);

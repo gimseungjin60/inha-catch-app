@@ -1,0 +1,42 @@
+# ============================================================
+# 로컬 개발 환경 설정 예시.
+# 이 파일을 application-local.properties 로 복사하고 실제 값으로 채우세요.
+# (application-local.properties 는 .gitignore 됩니다)
+# ============================================================
+
+# ── DB ──────────────────────────────────────────────────
+# MySQL 8.0+ 권장. 로컬에 inha_catch 데이터베이스를 만들고 접속 정보를 입력.
+spring.datasource.url=jdbc:mysql://localhost:3306/inha_catch?useSSL=false&serverTimezone=UTC
+spring.datasource.username=YOUR_DB_USERNAME
+spring.datasource.password=YOUR_DB_PASSWORD
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.database-platform=org.hibernate.dialect.MySQLDialect
+
+# ── JWT Secret ──────────────────────────────────────────
+# Base64 인코딩된 256bit 이상의 랜덤 문자열.
+# 생성: openssl rand -base64 48
+jwt.secret=GENERATE_WITH_OPENSSL_RAND_BASE64_48
+
+# ── Kakao OAuth ─────────────────────────────────────────
+# https://developers.kakao.com/console/app → REST API 키 복사
+kakao.client-id=YOUR_KAKAO_REST_API_KEY
+# Expo dev client 첫 실행 시 콘솔에 찍히는 [Kakao] REDIRECT_URI 값 그대로
+# 카카오 콘솔(카카오 로그인 → Redirect URI)에 등록 후 여기에 붙여넣기.
+kakao.redirect-uri=YOUR_KAKAO_REDIRECT_URI
+
+# ── Gemini API ──────────────────────────────────────────
+# https://aistudio.google.com/app/apikey 에서 발급
+gemini.api.key=YOUR_GEMINI_API_KEY
+
+# ── 잡알리오 OpenAPI (공공기관 채용정보) ───────────────────
+# https://www.data.go.kr/data/15125273/openapi.do 에서 활용신청 후 발급
+# 마이페이지 → 일반 인증키 (Base64, `==`로 끝남) 그대로 복사
+jobalio.api.key=YOUR_JOBALIO_SERVICE_KEY
+# 운영/장애 대비용 — 기본값(opendata.alio.go.kr) 그대로 사용 시 비워둬도 됨
+# jobalio.api.base-url=https://opendata.alio.go.kr
+
+# ── CORS ────────────────────────────────────────────────
+# 운영에선 정확한 도메인만. 로컬 개발은 wildcard 허용.
+cors.allowed-origins=http://localhost:*,http://10.0.2.2:*,http://127.0.0.1:*

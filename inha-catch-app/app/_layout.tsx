@@ -1,12 +1,14 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, router as globalRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
+import { DevSettings, Platform } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import { setOnAuthFailure } from '@/api/axios';
+import { clearAuthTokens, migrateLegacyAuthTokens } from '@/lib/secureStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export {
@@ -25,6 +27,10 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    'Pretendard-Regular': require('../assets/fonts/Pretendard-Regular.otf'),
+    'Pretendard-Medium': require('../assets/fonts/Pretendard-Medium.otf'),
+    'Pretendard-SemiBold': require('../assets/fonts/Pretendard-SemiBold.otf'),
+    'Pretendard-Bold': require('../assets/fonts/Pretendard-Bold.otf'),
   });
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
@@ -46,20 +52,31 @@ export default function RootLayout() {
 }
 
 import { BookmarkProvider } from '@/context/BookmarkContext';
+import { ApplicationProvider } from '@/context/ApplicationContext';
 import { UserProvider, useUser } from '@/context/UserContext';
 import { useNotificationSetup } from '@/hooks/useNotifications';
 
 function AuthFailureHandler() {
-  const router = useRouter();
-  const { updateProfile } = useUser();
-
   useEffect(() => {
+    // 첫 마운트 시 기존 AsyncStorage 토큰을 SecureStore 로 1회 이관
+    migrateLegacyAuthTokens().catch(() => {});
+
+    let authFailureInFlight = false;
     setOnAuthFailure(async () => {
-      await AsyncStorage.multiRemove(['@bookmarks', '@cache_scholarships']);
-      await updateProfile({ name: '', major: '', grade: '', keywords: [], isLoggedIn: false });
-      router.replace('/login');
+      if (authFailureInFlight) return; // 동시 다발 401 중복 처리 방지
+      authFailureInFlight = true;
+      await clearAuthTokens();
+      await AsyncStorage.multiRemove([
+        '@user_profile', '@bookmarks', '@cache_scholarships'
+      ]);
+      // 401 시 앱 전체 리로드 → 토큰 비었으니 / 환영 화면으로 시작
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined') window.location.reload();
+      } else {
+        DevSettings.reload();
+      }
     });
-  }, [router, updateProfile]);
+  }, []);
 
   return null;
 }
@@ -76,14 +93,24 @@ function RootLayoutNav() {
   return (
     <UserProvider>
       <BookmarkProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <AuthFailureHandler />
-          <NotificationInitializer />
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="admin" options={{ headerShown: false }} />
-          </Stack>
-        </ThemeProvider>
+        <ApplicationProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <AuthFailureHandler />
+            <NotificationInitializer />
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="login" />
+              <Stack.Screen name="signup" />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="admin" />
+              <Stack.Screen name="details/[id]" />
+              <Stack.Screen name="applications" />
+              <Stack.Screen name="agree-terms" />
+              <Stack.Screen name="legal/terms" />
+              <Stack.Screen name="legal/privacy" />
+            </Stack>
+          </ThemeProvider>
+        </ApplicationProvider>
       </BookmarkProvider>
     </UserProvider>
   );

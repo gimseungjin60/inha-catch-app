@@ -1,12 +1,19 @@
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
+import Constants from 'expo-constants';
 import api from '@/api/axios';
 
 // Expo AuthSession redirect URI 자동 생성
+// → 처음 호출 시 콘솔에 찍히는 값을 카카오 개발자 콘솔의 Redirect URI에 등록해야 함
 const REDIRECT_URI = makeRedirectUri({ preferLocalhost: false });
+console.log('[Kakao] REDIRECT_URI =', REDIRECT_URI);
 
 // 카카오 REST API 키 (카카오 개발자 콘솔에서 발급)
-const KAKAO_CLIENT_ID = 'YOUR_KAKAO_REST_API_KEY';
+// app.json의 extra.kakaoRestApiKey 또는 환경변수에서 읽음
+const KAKAO_CLIENT_ID =
+  (Constants.expoConfig?.extra?.kakaoRestApiKey as string | undefined) ??
+  process.env.EXPO_PUBLIC_KAKAO_REST_API_KEY ??
+  'YOUR_KAKAO_REST_API_KEY';
 
 export async function loginWithKakao(): Promise<{
   token: string;

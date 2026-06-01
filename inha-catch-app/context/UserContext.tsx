@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type UserProfile = {
@@ -8,6 +8,7 @@ type UserProfile = {
   keywords: string[];
   isLoggedIn: boolean;
   role?: string;
+  provider?: string; // 'LOCAL', 'KAKAO' 등
 };
 
 type UserContextType = {
@@ -51,18 +52,19 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadProfile();
   }, []);
 
-  const updateProfile = async (newProfile: UserProfile) => {
+  const updateProfile = useCallback(async (newProfile: UserProfile) => {
     try {
       setProfile(newProfile);
       await AsyncStorage.setItem('@user_profile', JSON.stringify(newProfile));
     } catch (e) {
       console.error('Failed to save user profile', e);
     }
-  };
+  }, []);
 
-  return (
-    <UserContext.Provider value={{ profile, updateProfile, isLoading }}>
-      {children}
-    </UserContext.Provider>
+  const value = useMemo(
+    () => ({ profile, updateProfile, isLoading }),
+    [profile, updateProfile, isLoading]
   );
+
+  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
 };
