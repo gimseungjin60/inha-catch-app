@@ -35,6 +35,77 @@ function todayLabel(): string {
   return `${String(d.getDate()).padStart(2, '0')}.${MONTHS[d.getMonth()]}.${d.getFullYear()}`
 }
 
+const PAGE_SIZE = 30
+// 탭 → 서버 category 파라미터 (전체는 필터 없음)
+const CATEGORY_BY_TAB: Record<Tab, string | null> = {
+  전체: null,
+  장학금: 'SCHOLARSHIP',
+  공모전: 'CONTEST',
+  채용: 'JOB',
+}
+
+// 서버 원본 공고 객체 → 카드 표시용 Scholarship (순수 함수, 추천 마킹은 호출부에서 적용)
+function mapScholarship(d: any): Scholarship {
+  const title = d.title ?? ''
+  const cat: string = (d.category || '').toUpperCase()
+  let type: Scholarship['type']
+  if (cat === 'JOB') type = 'job'
+  else if (cat === 'CONTEST') type = 'contest'
+  else if (cat === 'SCHOLARSHIP') type = 'scholarship'
+  else if (title.includes('공모전')) type = 'contest'
+  else type = 'scholarship'
+
+  const tags: string[] = []
+  if (type === 'job') tags.push('#채용')
+  else if (type === 'contest') tags.push('#공모전')
+  else tags.push('#장학금')
+  if (type === 'job' && d.companyName) tags.push('#' + d.companyName)
+  else if (type === 'job' && d.workLocation) tags.push('#' + d.workLocation)
+  else if (d.eligibility && d.eligibility.length < 10) tags.push('#' + d.eligibility)
+
+  let parsedAiSummary: string[]
+  if (type === 'job') {
+    parsedAiSummary = [
+      d.companyName || '기관 정보 없음',
+      d.workLocation ? `근무지: ${d.workLocation}` : '근무지 정보 없음',
+      d.applyPeriod || '모집 기한은 상세 요강 참조',
+    ]
+  } else {
+    parsedAiSummary = [
+      d.eligibility || '자격 조건은 상세 요강 참조',
+      d.amountInfo || '지원 내역은 상세 요강 참조',
+      d.applyPeriod || '모집 기한은 상세 요강 참조',
+    ]
+  }
+  if (d.basicSummary) {
+    const bullets = d.basicSummary
+      .split('\n')
+      .filter((s: string) => s.trim().startsWith('•'))
+      .map((s: string) => s.replace('•', '').trim())
+    if (bullets.length > 0) parsedAiSummary = bullets
+  }
+
+  return {
+    id: d.id,
+    type,
+    isRecommended: false,
+    title,
+    aiSummary: parsedAiSummary,
+    tags: tags.length ? tags : ['#인하대'],
+    dDay: d.DDay || d.dDay || '상시',
+    reasons: undefined,
+  }
+}
+
+// dDay 문자열을 숫자로 — "D-3" → 3, "D-Day" → 0, "마감"/"상시" → null
+function parseDDay(s: string): number | null {
+  if (!s) return null
+  if (s === 'D-Day') return 0
+  if (s === '마감' || s === '상시') return null
+  const m = s.match(/^D-(\d+)$/)
+  return m ? parseInt(m[1], 10) : null
+}
+
 export default function HomeScreen() {
   const colorScheme = useColorScheme() ?? 'light'
   const colors = Colors[colorScheme]
@@ -42,165 +113,149 @@ export default function HomeScreen() {
   const router = useRouter()
   const { profile } = useUser()
 
-  const [data, setData] = useState<Scholarship[]>([])
-  const [loading, setLoading] = useState(true)
+  // 메인 리스트(서버 페이지네이션 + 무한 스크롤)
+  const [rawItems, setRawItems] = useState<any[]>([])
+  const [page, setPage] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const [totalCount, setTotalCount] = useState(0)
+  const [loading, setLoading] = useState(true)          // 최초/탭 전환 로딩
+  const [loadingMore, setLoadingMore] = useState(false) // 다음 페이지 로딩
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isStale, setIsStale] = useState(false)         // 네트워크 실패로 캐시 표시 중
 
-  const mapScholarship = (d: any, recIds: Set<number>, reasonsById: Map<number, RecommendReason[]>): Scholarship => {
-    const title = d.title ?? ''
-    // 서버 category 우선, 없으면 제목 휴리스틱 폴백
-    const cat: string = (d.category || '').toUpperCase()
-    let type: Scholarship['type']
-    if (cat === 'JOB') type = 'job'
-    else if (cat === 'CONTEST') type = 'contest'
-    else if (cat === 'SCHOLARSHIP') type = 'scholarship'
-    else if (title.includes('공모전')) type = 'contest'
-    else type = 'scholarship'
-
-    const tags: string[] = []
-    if (type === 'job') tags.push('#채용')
-    else if (type === 'contest') tags.push('#공모전')
-    else tags.push('#장학금')
-    if (type === 'job' && d.companyName) tags.push('#' + d.companyName)
-    else if (type === 'job' && d.workLocation) tags.push('#' + d.workLocation)
-    else if (d.eligibility && d.eligibility.length < 10) tags.push('#' + d.eligibility)
-
-    let parsedAiSummary: string[]
-    if (type === 'job') {
-      parsedAiSummary = [
-        d.companyName || '기관 정보 없음',
-        d.workLocation ? `근무지: ${d.workLocation}` : '근무지 정보 없음',
-        d.applyPeriod || '모집 기한은 상세 요강 참조',
-      ]
-    } else {
-      parsedAiSummary = [
-        d.eligibility || '자격 조건은 상세 요강 참조',
-        d.amountInfo || '지원 내역은 상세 요강 참조',
-        d.applyPeriod || '모집 기한은 상세 요강 참조',
-      ]
-    }
-    if (d.basicSummary) {
-      const bullets = d.basicSummary
-        .split('\n')
-        .filter((s: string) => s.trim().startsWith('•'))
-        .map((s: string) => s.replace('•', '').trim())
-      if (bullets.length > 0) parsedAiSummary = bullets
-    }
-
-    return {
-      id: d.id,
-      type,
-      isRecommended: recIds.has(d.id),
-      title: title,
-      aiSummary: parsedAiSummary,
-      tags: tags.length ? tags : ['#인하대'],
-      dDay: d.DDay || d.dDay || '상시',
-      reasons: reasonsById.get(d.id),
-    }
-  }
+  // 추천(개인화) — 별도 엔드포인트
+  const [recIds, setRecIds] = useState<Set<number>>(new Set())
+  const [reasonsById, setReasonsById] = useState<Map<number, RecommendReason[]>>(new Map())
+  const [recommendedCards, setRecommendedCards] = useState<Scholarship[]>([])
 
   const keywordsKey = profile.keywords?.join(',') ?? ''
 
-  const fetchData = useCallback(
-    (isRefresh = false) => {
-      if (isRefresh) setRefreshing(true)
-      else setLoading(true)
-      setError(null)
+  const fetchRecommended = useCallback(() => {
+    const params = new URLSearchParams()
+    if (profile.major) params.append('major', profile.major)
+    if (keywordsKey) params.append('keywords', keywordsKey)
+
+    api
+      .get(`/api/scholarships/recommended?${params.toString()}`)
+      .then((res) => {
+        const recList: any[] = res.data || []
+        const ids = new Set<number>()
+        const rMap = new Map<number, RecommendReason[]>()
+        const cards: Scholarship[] = []
+        for (const r of recList) {
+          const s = r.scholarship ?? r
+          const sId: number | undefined = s?.id
+          if (!sId) continue
+          ids.add(sId)
+          const reasons = Array.isArray(r.reasons) ? (r.reasons as RecommendReason[]) : undefined
+          if (reasons) rMap.set(sId, reasons)
+          cards.push({ ...mapScholarship(s), isRecommended: true, reasons })
+        }
+        setRecIds(ids)
+        setReasonsById(rMap)
+        setRecommendedCards(cards)
+      })
+      .catch(() => {
+        /* 추천 실패는 치명적이지 않음 — 메인 리스트는 정상 동작 */
+      })
+  }, [profile.major, keywordsKey])
+
+  const fetchPage = useCallback(
+    (pageToLoad: number, mode: 'initial' | 'more' | 'refresh') => {
+      const category = CATEGORY_BY_TAB[activeTab]
+      if (mode === 'initial') setLoading(true)
+      else if (mode === 'more') setLoadingMore(true)
+      else setRefreshing(true)
+      if (mode !== 'more') setError(null)
 
       const params = new URLSearchParams()
-      if (profile.major) params.append('major', profile.major)
-      if (keywordsKey) params.append('keywords', keywordsKey)
+      params.append('page', String(pageToLoad))
+      params.append('size', String(PAGE_SIZE))
+      if (category) params.append('category', category)
 
-      Promise.all([
-        api.get('/api/scholarships?size=1500'),
-        api.get(`/api/scholarships/recommended?${params.toString()}`).catch(() => ({ data: [] })),
-      ])
-        .then(([allRes, recRes]) => {
-          const recList: any[] = recRes.data || []
-          const recIds = new Set<number>(
-            recList.map((r: any) => r.scholarship?.id ?? r.id).filter(Boolean)
-          )
-          const reasonsById = new Map<number, RecommendReason[]>()
-          for (const r of recList) {
-            const sId = r.scholarship?.id ?? r.id
-            if (sId && Array.isArray(r.reasons)) {
-              reasonsById.set(sId, r.reasons)
-            }
+      api
+        .get(`/api/scholarships?${params.toString()}`)
+        .then((res) => {
+          const body = res.data ?? {}
+          const content: any[] = body.content ?? (Array.isArray(body) ? body : [])
+          const isLast = typeof body.last === 'boolean' ? body.last : content.length < PAGE_SIZE
+          setRawItems((prev) => (pageToLoad === 0 ? content : [...prev, ...content]))
+          setPage(pageToLoad)
+          setHasMore(!isLast)
+          if (typeof body.totalElements === 'number') setTotalCount(body.totalElements)
+          setIsStale(false)
+          // 전체 탭 첫 페이지만 오프라인 캐시로 저장 (원본 객체 형태로 일관 저장)
+          if (pageToLoad === 0 && !category) {
+            AsyncStorage.setItem('@cache_scholarships', JSON.stringify(content)).catch(() => {})
           }
-
-          const rawData = allRes.data.content || allRes.data
-          const mapped: Scholarship[] = rawData.map((d: any) => mapScholarship(d, recIds, reasonsById))
-
-          mapped.sort((a, b) => {
-            if (a.isRecommended && !b.isRecommended) return -1
-            if (!a.isRecommended && b.isRecommended) return 1
-            return 0
-          })
-
-          setData(mapped)
-          AsyncStorage.setItem('@cache_scholarships', JSON.stringify(mapped)).catch(() => {})
         })
         .catch(async (err) => {
           console.error('API Fetch Error:', err)
-          try {
-            const cached = await AsyncStorage.getItem('@cache_scholarships')
-            if (cached) {
-              setData(JSON.parse(cached))
-              setError(null)
-              return
-            }
-          } catch {}
-          setError('데이터를 불러오지 못했습니다.')
+          if (pageToLoad === 0) {
+            try {
+              const cached = await AsyncStorage.getItem('@cache_scholarships')
+              if (cached) {
+                setRawItems(JSON.parse(cached))
+                setHasMore(false)
+                setIsStale(true)
+                setError(null)
+                return
+              }
+            } catch {}
+            setError('데이터를 불러오지 못했습니다.')
+          }
         })
         .finally(() => {
           setLoading(false)
+          setLoadingMore(false)
           setRefreshing(false)
         })
     },
-    [profile.major, keywordsKey]
+    [activeTab]
   )
 
+  // 최초 + 탭 전환 시 첫 페이지부터 다시 로드
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    setRawItems([])
+    setPage(0)
+    setHasMore(true)
+    fetchPage(0, 'initial')
+  }, [fetchPage])
 
-  const filteredData = useMemo(() => {
-    const filtered = data.filter((item) => {
-      if (activeTab === '전체') return true
-      if (activeTab === '장학금') return item.type === 'scholarship'
-      if (activeTab === '공모전') return item.type === 'contest'
-      if (activeTab === '채용') return item.type === 'job'
-      return true
-    })
-    // 탭당 50건만 노출 (화면 부하 줄임)
-    return filtered.slice(0, 50)
-  }, [data, activeTab])
+  // 프로필(학과/키워드) 변경 시 추천 갱신
+  useEffect(() => {
+    fetchRecommended()
+  }, [fetchRecommended])
 
-  // dDay 문자열을 숫자로 — "D-3" → 3, "D-Day" → 0, "마감"/"상시" → null
-  const parseDDay = (s: string): number | null => {
-    if (!s) return null
-    if (s === 'D-Day') return 0
-    if (s === '마감' || s === '상시') return null
-    const m = s.match(/^D-(\d+)$/)
-    return m ? parseInt(m[1], 10) : null
-  }
+  // 원본 → 표시용 매핑 + 추천 마킹
+  const listData = useMemo(
+    () =>
+      rawItems.map((d) => {
+        const base = mapScholarship(d)
+        return { ...base, isRecommended: recIds.has(base.id), reasons: reasonsById.get(base.id) }
+      }),
+    [rawItems, recIds, reasonsById]
+  )
 
   // 가로 캐러셀 — 추천 (전체 탭에서만 노출)
-  const recommendedItems = useMemo(
-    () => data.filter((d) => d.isRecommended).slice(0, 10),
-    [data]
-  )
-  // 가로 캐러셀 — 마감 임박 (D-7 이내, 마감/상시 제외)
+  const recommendedItems = useMemo(() => recommendedCards.slice(0, 10), [recommendedCards])
+  const recommendedCount = recommendedCards.length
+
+  // 가로 캐러셀 — 마감 임박 (D-7 이내, 현재 로드된 항목 기준)
   const urgentItems = useMemo(() => {
-    return data
+    return listData
       .map((d) => ({ ...d, _dn: parseDDay(d.dDay) }))
       .filter((d) => d._dn !== null && d._dn! >= 0 && d._dn! <= 7)
       .sort((a, b) => a._dn! - b._dn!)
       .slice(0, 10)
-  }, [data])
+  }, [listData])
 
-  const recommendedCount = recommendedItems.length
+  const onEndReached = useCallback(() => {
+    if (!loading && !loadingMore && hasMore && !error) {
+      fetchPage(page + 1, 'more')
+    }
+  }, [loading, loadingMore, hasMore, error, page, fetchPage])
 
   const renderItem = useCallback(({ item }: { item: Scholarship }) => <ScholarshipCard item={item} />, [])
   const keyExtractor = useCallback((item: Scholarship) => item.id.toString(), [])
@@ -220,11 +275,20 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
+      {/* 오프라인/캐시 안내 배너 */}
+      {isStale && (
+        <View style={[styles.staleBar, { backgroundColor: colors.stone50, borderColor: colors.stone100 }]}>
+          <Text style={[styles.staleText, { color: colors.stone400 }]}>
+            오프라인 ─ 저장된 데이터를 표시 중이에요. 당겨서 새로고침하세요.
+          </Text>
+        </View>
+      )}
+
       {/* 큰 인사 헤드라인 */}
       <Text style={[styles.greeting, { color: colors.ink }]}>
         안녕, {profile.name || '학우'}님.{'\n'}
         오늘{' '}
-        <Text style={[styles.greetingHighlight, { color: colors.signal }]}>{data.length}건</Text>의
+        <Text style={[styles.greetingHighlight, { color: colors.signal }]}>{totalCount || listData.length}건</Text>의
         공고가 준비됐어요.
       </Text>
 
@@ -375,7 +439,7 @@ export default function HomeScreen() {
           {activeTab} ─ LISTINGS
         </Text>
         <Text style={[styles.listCountValue, { color: colors.ink }]}>
-          {filteredData.length}
+          {listData.length}
         </Text>
       </View>
     </View>
@@ -392,7 +456,7 @@ export default function HomeScreen() {
         <View style={styles.emptyBox}>
           <Text style={[styles.emptyText, { color: colors.stone400 }]}>{error}</Text>
           <Pressable
-            onPress={() => fetchData()}
+            onPress={() => fetchPage(0, 'initial')}
             style={[styles.retryBtn, { backgroundColor: colors.ink }]}
           >
             <RefreshCw size={14} color={colors.paperCard} />
@@ -416,16 +480,26 @@ export default function HomeScreen() {
       />
       <SafeAreaView style={{ flex: 1 }}>
         <FlatList
-          data={loading ? [] : filteredData}
+          data={loading ? [] : listData}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.contentContainer}
           ListHeaderComponent={ListHeader}
           ListEmptyComponent={ListEmpty}
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator size="small" color={colors.signal} style={{ marginVertical: 20 }} />
+            ) : null
+          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => fetchData(true)}
+              onRefresh={() => {
+                fetchRecommended()
+                fetchPage(0, 'refresh')
+              }}
               colors={[colors.signal]}
               tintColor={colors.signal}
             />
@@ -607,6 +681,18 @@ const styles = StyleSheet.create({
   listCountValue: {
     fontFamily: Fonts.mono,
     fontSize: 14,
+  },
+  staleBar: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  staleText: {
+    fontFamily: Fonts.medium,
+    fontSize: 12,
+    lineHeight: 16,
   },
   emptyBox: {
     alignItems: 'center',

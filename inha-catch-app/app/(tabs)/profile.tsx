@@ -17,12 +17,13 @@ import Colors from '@/constants/Colors'
 import Fonts from '@/constants/Fonts'
 import { useColorScheme } from '@/components/useColorScheme'
 import { useUser } from '@/context/UserContext'
-import { Shield, ChevronDown, ChevronUp, X, AlertTriangle, ClipboardList, ChevronRight } from 'lucide-react-native'
+import { Shield, ChevronDown, ChevronUp, X, AlertTriangle, ClipboardList, ChevronRight, Bell } from 'lucide-react-native'
 import { useRouter } from 'expo-router'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { clearAuthTokens, getJwtToken } from '@/lib/secureStorage'
+import { clearAuthTokens } from '@/lib/secureStorage'
 import api from '@/api/axios'
 import { validatePassword } from '@/utils/validation'
+import { useNotificationPermission, enablePushNotifications, openAppNotificationSettings } from '@/hooks/useNotifications'
 
 const showAlert = (title: string, msg: string) => {
   Platform.OS === 'web' ? window.alert(msg) : Alert.alert(title, msg)
@@ -46,6 +47,38 @@ export default function ProfileScreen() {
   const [isChangingPassword, setIsChangingPassword] = useState(false)
 
   const [isSaving, setIsSaving] = useState(false)
+
+  // 알림 권한
+  const { status: notiStatus, refresh: refreshNoti } = useNotificationPermission()
+
+  const handleNotificationPress = async () => {
+    if (notiStatus === 'granted') {
+      showAlert('알림', '알림이 이미 켜져 있어요.')
+      return
+    }
+    if (notiStatus === 'denied') {
+      // 한 번 거부하면 앱 내 재요청이 막히므로 시스템 설정으로 안내
+      await openAppNotificationSettings()
+      return
+    }
+    if (notiStatus === 'unsupported') {
+      showAlert('알림', '이 환경에서는 푸시 알림을 사용할 수 없어요. (실기기 + 정식 빌드 필요)')
+      return
+    }
+    const result = await enablePushNotifications()
+    await refreshNoti()
+    if (result === 'granted') {
+      showAlert('완료', '마감 임박·새 공고 알림을 받아볼 수 있어요.')
+    } else if (result === 'denied') {
+      showAlert('알림', '권한이 거부되었어요. 설정에서 직접 허용할 수 있어요.')
+    }
+  }
+
+  const notiLabel =
+    notiStatus === 'granted' ? '켜짐'
+    : notiStatus === 'denied' ? '설정에서 허용 필요'
+    : notiStatus === 'unsupported' ? '사용 불가'
+    : '꺼짐 ─ 탭하여 켜기'
 
   // 회원탈퇴
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -73,17 +106,15 @@ export default function ProfileScreen() {
   const handleSave = async () => {
     setIsSaving(true)
     try {
+      // 로그인 상태면 서버 동기화가 성공해야만 로컬에 반영 (실패 시 로컬/서버 불일치 방지)
       if (profile.isLoggedIn) {
-        const token = await getJwtToken()
-        if (token) {
-          await api.put('/api/user/profile', { name, major, keywords: keywords.join(',') })
-        }
+        await api.put('/api/user/profile', { name, major, keywords: keywords.join(',') })
       }
       await updateProfile({ ...profile, name, major, keywords })
       showAlert('저장 완료', '내 정보가 업데이트 되었습니다!')
     } catch (err) {
       console.error(err)
-      showAlert('저장 실패', '서버 동기화 중 오류가 발생했습니다.')
+      showAlert('저장 실패', '서버 동기화 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
     } finally {
       setIsSaving(false)
     }
@@ -267,6 +298,23 @@ export default function ProfileScreen() {
             <ChevronRight size={16} strokeWidth={1.5} color={colors.stone400} />
           </Pressable>
         )}
+
+        {/* 알림 설정 */}
+        <Pressable
+          onPress={handleNotificationPress}
+          style={[styles.menuRow, { backgroundColor: colors.paperCard, borderColor: colors.stone100 }]}
+        >
+          <View style={styles.menuLeft}>
+            <Bell size={18} strokeWidth={1.5} color={colors.ink} />
+            <View>
+              <Text style={[styles.menuTitle, { color: colors.ink }]}>알림</Text>
+              <Text style={[styles.menuSub, { color: notiStatus === 'granted' ? colors.signal : colors.stone400 }]}>
+                {notiLabel}
+              </Text>
+            </View>
+          </View>
+          <ChevronRight size={16} strokeWidth={1.5} color={colors.stone400} />
+        </Pressable>
 
         {/* Section: 기본 정보 */}
         <View style={[styles.card, { backgroundColor: colors.paperCard, borderColor: colors.stone100 }]}>

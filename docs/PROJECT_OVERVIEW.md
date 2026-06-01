@@ -37,6 +37,7 @@
 | 백엔드 | Spring Boot 4.0.3 · Java 17 · JPA/Hibernate · jsoup 1.17.1 |
 | DB | MySQL 8.0 |
 | 인증 | JWT(Access+Refresh) · BCrypt · Kakao OAuth |
+]
 | AI | Google Gemini 2.5 Flash |
 | 푸시 | Firebase Admin SDK 9.2.0 (FCM) |
 | 인프라 | Docker / Docker Compose · GitHub Actions |

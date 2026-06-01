@@ -16,6 +16,7 @@ import Colors from '@/constants/Colors'
 import Fonts from '@/constants/Fonts'
 import { useColorScheme } from '@/components/useColorScheme'
 import api from '@/api/axios'
+import { enablePushNotifications } from '@/hooks/useNotifications'
 
 const showAlert = (title: string, msg: string) => {
   Platform.OS === 'web' ? window.alert(msg) : Alert.alert(title, msg)
@@ -47,6 +48,12 @@ export default function AgreeTermsScreen() {
     setIsSubmitting(true)
     try {
       await api.post('/api/user/agree-terms', { terms: true, privacy: true })
+      // 약관 동의 직후가 알림 권한을 맥락 있게 요청하기 가장 자연스러운 시점
+      try {
+        await enablePushNotifications()
+      } catch {
+        // 권한 거부/미지원은 조용히 무시 — 나중에 프로필에서 다시 켤 수 있음
+      }
       const nextRoute = (params.next as string) || '/(tabs)'
       router.replace(nextRoute as any)
     } catch (err: any) {
