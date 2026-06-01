@@ -73,15 +73,20 @@ export default function WelcomeScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.paper }]}>
       <View style={styles.top}>
-        <Text style={[styles.wordmark, { color: colors.stone400 }]}>INHA-CATCH</Text>
+        <View style={styles.wordmarkRow}>
+          <View style={[styles.dot, { backgroundColor: colors.signal }]} />
+          <Text style={[styles.wordmark, { color: colors.stone400 }]}>INHA · CATCH</Text>
+        </View>
       </View>
 
       <View style={styles.middle}>
+        <Text style={[styles.kicker, { color: colors.signal }]}>장학금 · 공모전 큐레이션</Text>
         <Text style={[styles.headline, { color: colors.ink }]}>
-          흘려보낸{'\n'}기회들에게.
+          당신에게 딱 맞는{'\n'}
+          <Text style={{ color: colors.signal }}>기회</Text>만, 골라서.
         </Text>
         <Text style={[styles.subline, { color: colors.stone400 }]}>
-          인하공업전문대학 학우님을 위한{'\n'}장학금·공모전 큐레이션 서비스.
+          인하공전 학우님을 위해,{'\n'}흩어진 기회를 매일 모아드릴게요.
         </Text>
       </View>
 
@@ -131,29 +136,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   top: {
-    paddingTop: 16,
+    paddingTop: 20,
+  },
+  wordmarkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   wordmark: {
     fontFamily: Fonts.semibold,
     fontSize: 11,
-    letterSpacing: 2,
+    letterSpacing: 2.5,
     textTransform: 'uppercase',
   },
   middle: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
+  },
+  kicker: {
+    fontFamily: Fonts.semibold,
+    fontSize: 12,
+    letterSpacing: 0.4,
+    marginBottom: 14,
+    textAlign: 'center',
   },
   headline: {
     fontFamily: Fonts.bold,
-    fontSize: 44,
-    lineHeight: 50,
-    letterSpacing: -1.2,
-    marginBottom: 20,
+    fontSize: 42,
+    lineHeight: 52,
+    letterSpacing: -1.6,
+    marginBottom: 18,
+    textAlign: 'center',
   },
   subline: {
     fontFamily: Fonts.regular,
-    fontSize: 15,
-    lineHeight: 24,
+    fontSize: 15.5,
+    lineHeight: 25,
+    letterSpacing: -0.2,
+    textAlign: 'center',
   },
   bottom: {
     paddingBottom: 16,

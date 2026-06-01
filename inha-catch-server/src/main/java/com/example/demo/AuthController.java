@@ -31,14 +31,17 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final KakaoOAuthService kakaoOAuthService;
     private final KakaoAuthService kakaoAuthService;
+    private final EmailService emailService;
 
     public AuthController(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,
-                          KakaoOAuthService kakaoOAuthService, KakaoAuthService kakaoAuthService) {
+                          KakaoOAuthService kakaoOAuthService, KakaoAuthService kakaoAuthService,
+                          EmailService emailService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.kakaoOAuthService = kakaoOAuthService;
         this.kakaoAuthService = kakaoAuthService;
+        this.emailService = emailService;
     }
 
     @PostMapping("/signup")
@@ -157,8 +160,8 @@ public class AuthController {
 
         Optional<User> userOpt = userRepository.findByEmail(email.trim());
         if (userOpt.isEmpty()) {
-            // 보안상 이메일 존재 여부를 노출하지 않음
-            return ResponseEntity.ok(Map.of("message", "임시 비밀번호가 이메일로 발송되었습니다."));
+            // 보안상 이메일 존재 여부를 노출하지 않음 — 아래 정상 케이스와 동일 메시지
+            return ResponseEntity.ok(Map.of("message", "가입된 이메일이라면 임시 비밀번호가 발송됩니다. 메일함을 확인해주세요."));
         }
 
         // 임시 비밀번호 생성 — 영숫자 + 특수문자 12자 (SecureRandom)
@@ -167,10 +170,17 @@ public class AuthController {
         user.setPassword(passwordEncoder.encode(tempPassword));
         userRepository.save(user);
 
-        // TODO: 이메일 발송 서비스(Spring Mail + SMTP) 연동 필요.
+        // SMTP가 설정된 경우에만 실제 발송. 미설정 환경에서는 발송되지 않으므로 경고만 남긴다.
         // 보안상 임시 비밀번호는 응답/로그에 노출하지 않는다.
-        log.info("[비밀번호 재설정] 요청 처리 완료");
-        return ResponseEntity.ok(Map.of("message", "임시 비밀번호가 이메일로 발송되었습니다. 로그인 후 비밀번호를 변경해주세요."));
+        if (emailService.isEnabled()) {
+            boolean sent = emailService.sendTempPassword(user.getEmail(), tempPassword);
+            log.info("[비밀번호 재설정] 임시 비밀번호 메일 발송 {}", sent ? "성공" : "실패");
+        } else {
+            log.warn("[비밀번호 재설정] SMTP 미설정 — 임시 비밀번호 메일을 발송하지 못했습니다. (SMTP 환경변수 설정 필요)");
+        }
+
+        // 계정 존재 여부를 노출하지 않기 위해 항상 동일한 메시지를 반환한다.
+        return ResponseEntity.ok(Map.of("message", "가입된 이메일이라면 임시 비밀번호가 발송됩니다. 메일함을 확인해주세요."));
     }
 
     @PostMapping("/kakao")

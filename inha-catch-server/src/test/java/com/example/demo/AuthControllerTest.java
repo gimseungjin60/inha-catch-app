@@ -1,12 +1,11 @@
 package com.example.demo;
 
 import com.example.demo.entity.User;
-import com.example.demo.security.JwtAuthenticationFilter;
 import com.example.demo.security.JwtUtil;
-import com.example.demo.security.SecurityConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -26,7 +25,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(AuthController.class)
-@Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtUtil.class})
+@AutoConfigureMockMvc(addFilters = false) // 보안/레이트리밋 필터 비활성 — 컨트롤러 응답 자체를 검증
+@Import(JwtUtil.class)                     // 토큰 발급용 실제 빈 (응답의 token/refreshToken 검증)
 @TestPropertySource(properties = {
         "jwt.secret=SW5oYUNhdGNoU2VjcmV0S2V5Rm9ySldUQXV0aDIwMjZWZXJ5U2VjdXJlIQ=="
 })
@@ -43,6 +43,19 @@ class AuthControllerTest {
 
     @MockitoBean
     private PasswordEncoder passwordEncoder;
+
+    // JwtUtil/AuthController가 요구하는 협력 빈 — 슬라이스 테스트에서 목으로 제공
+    @MockitoBean
+    private TokenBlacklistRepository tokenBlacklistRepository;
+
+    @MockitoBean
+    private KakaoOAuthService kakaoOAuthService;
+
+    @MockitoBean
+    private KakaoAuthService kakaoAuthService;
+
+    @MockitoBean
+    private EmailService emailService;
 
     // ==================== 회원가입 테스트 ====================
 
@@ -107,7 +120,7 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("비밀번호 4자 미만 400 반환")
+    @DisplayName("비밀번호 8자 미만 400 반환")
     void signup_shortPassword_returns400() throws Exception {
         Map<String, String> request = Map.of(
                 "email", "test@example.com",
@@ -119,7 +132,7 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("비밀번호는 4자 이상이어야 합니다."));
+                .andExpect(jsonPath("$.message").value("비밀번호는 8자 이상이어야 해요."));
     }
 
     // ==================== 로그인 테스트 ====================

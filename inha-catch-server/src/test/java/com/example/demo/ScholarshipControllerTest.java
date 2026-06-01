@@ -1,18 +1,16 @@
 package com.example.demo;
 
 import com.example.demo.entity.Scholarship;
-import com.example.demo.security.JwtAuthenticationFilter;
 import com.example.demo.security.JwtUtil;
-import com.example.demo.security.SecurityConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -28,7 +26,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(ScholarshipController.class)
-@Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtUtil.class})
+@AutoConfigureMockMvc(addFilters = false) // 보안/레이트리밋 필터 비활성 — 컨트롤러 응답 자체를 검증
+@Import(JwtUtil.class)                     // @WebMvcTest가 생성하는 JwtAuthenticationFilter 빈의 의존성
 @TestPropertySource(properties = {
         "jwt.secret=SW5oYUNhdGNoU2VjcmV0S2V5Rm9ySldUQXV0aDIwMjZWZXJ5U2VjdXJlIQ=="
 })
@@ -40,11 +39,9 @@ class ScholarshipControllerTest {
     @MockitoBean
     private ScholarshipRepository scholarshipRepository;
 
+    // JwtUtil이 요구하는 협력 빈
     @MockitoBean
-    private UserRepository userRepository;
-
-    @MockitoBean
-    private PasswordEncoder passwordEncoder;
+    private TokenBlacklistRepository tokenBlacklistRepository;
 
     private Scholarship createSampleScholarship(Long id, String title) {
         Scholarship s = new Scholarship();
@@ -141,18 +138,18 @@ class ScholarshipControllerTest {
     // ==================== 페이지 크기 제한 테스트 ====================
 
     @Test
-    @DisplayName("페이지 크기가 200 초과 시 200으로 제한")
-    void getAll_pageSizeCappedAt200() throws Exception {
+    @DisplayName("페이지 크기가 상한(2000) 초과 시 2000으로 제한")
+    void getAll_pageSizeCappedAtMax() throws Exception {
         Page<Scholarship> emptyPage = new PageImpl<>(List.of());
         when(scholarshipRepository.findAll(any(Pageable.class))).thenReturn(emptyPage);
 
         mockMvc.perform(get("/api/scholarships")
                         .param("page", "0")
-                        .param("size", "500"))
+                        .param("size", "5000"))
                 .andExpect(status().isOk());
 
         verify(scholarshipRepository).findAll(argThat((Pageable pageable) ->
-                pageable.getPageSize() == 200
+                pageable.getPageSize() == 2000
         ));
     }
 }

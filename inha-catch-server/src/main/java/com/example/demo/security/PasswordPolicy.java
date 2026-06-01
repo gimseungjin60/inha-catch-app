@@ -34,7 +34,7 @@ public final class PasswordPolicy {
             "monkey123", "dragon123", "master123", "sunshine1", "princess1",
             "welcome1", "welcome123", "football1", "baseball1", "shadow123",
             "michael1", "jennifer1", "computer1", "starwars1", "trustno1",
-            "passw0rd", "p@ssw0rd", "p@ssword", "qwer1234", "asdf1234",
+            "passw0rd", "p@ssw0rd", "p@ssword", "qwer1234",
             "zxcv1234", "qaz12345", "12qwaszx", "test1234", "test12345",
             "user1234", "user12345", "guest1234", "demo1234", "samsung1",
             "inha1234", "inhacatch", "inha12345", "school1234", "student1",

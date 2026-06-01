@@ -28,12 +28,17 @@ public class ScholarshipController {
     @GetMapping
     public Page<Scholarship> getAll(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String category
     ) {
         if (page < 0) page = 0;
         if (size < 1) size = 1;
         if (size > MAX_PAGE_SIZE) size = MAX_PAGE_SIZE;
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "crawledAt"));
+        // category 지정 시 해당 카테고리만(무한 스크롤용), 없으면 전체 — 하위호환 유지
+        if (category != null && !category.isBlank()) {
+            return repository.findByEffectiveCategory(category.trim().toUpperCase(), pageable);
+        }
         return repository.findAll(pageable);
     }
 

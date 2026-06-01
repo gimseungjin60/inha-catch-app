@@ -41,6 +41,26 @@ export function openAppNotificationSettings(): Promise<void> {
 }
 
 /**
+ * 사용자가 명시적으로 알림을 켤 때 호출.
+ * 권한을 요청하고, 허용되면 FCM 토큰을 서버에 등록한다.
+ * @returns 최종 권한 상태
+ */
+export async function enablePushNotifications(): Promise<NotificationPermissionStatus> {
+  const status = await requestNotificationPermission();
+  if (status === 'granted') {
+    const token = await registerForPushNotifications({ request: false });
+    if (token) {
+      try {
+        await api.post('/api/user/fcm-token', { fcmToken: token });
+      } catch (e: any) {
+        console.warn('FCM 토큰 등록 실패:', e?.message);
+      }
+    }
+  }
+  return status;
+}
+
+/**
  * 알림 권한 상태를 추적하는 훅. 앱이 포그라운드로 복귀할 때마다 재확인.
  */
 export function useNotificationPermission() {
@@ -125,7 +145,7 @@ export function useNotificationSetup(isLoggedIn: boolean) {
   }, [isLoggedIn]);
 }
 
-async function registerForPushNotifications(): Promise<string | null> {
+async function registerForPushNotifications(options?: { request?: boolean }): Promise<string | null> {
   if (isExpoGo) {
     console.log('[FCM] Expo Go에서는 원격 푸시 미지원 (SDK 53+). Dev Build에서만 동작.');
     return null;
@@ -140,6 +160,11 @@ async function registerForPushNotifications(): Promise<string | null> {
     let finalStatus = existingStatus;
 
     if (existingStatus !== 'granted') {
+      // 자동 흐름(로그인 직후 등)에서는 권한을 강제로 묻지 않는다.
+      // 권한 요청은 약관 동의 후 / 프로필의 "알림 켜기" 같은 명시적 동선에서만 수행.
+      if (!options?.request) {
+        return null;
+      }
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
