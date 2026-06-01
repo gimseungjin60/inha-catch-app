@@ -1,0 +1,171 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Inha-Catch Color Tokens */
+  --ink: #0B1220;
+  --ink-dark: #E8ECF2;
+  --paper: #FAFAF7;
+  --paper-card: #FFFFFF;
+  --paper-dark: #0E0F12;
+  --paper-card-dark: #15171C;
+  
+  --stone-50: #F4F3EF;
+  --stone-100: #E8E6DF;
+  --stone-200: #D3CFC4;
+  --stone-300: #A8A398;
+  --stone-400: #6C6960;
+  --stone-500: #3D3B36;
+  
+  --signal: #2F6BFF;
+  --signal-soft: #E8EFFF;
+  --signal-dark: #5B8BFF;
+  --signal-soft-dark: rgba(47, 107, 255, 0.15);
+  
+  --critical: #C2410C;
+  
+  /* Border for dark mode */
+  --border-dark: rgba(232, 236, 242, 0.08);
+  
+  /* Base shadcn tokens mapped */
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--paper-card);
+  --card-foreground: var(--ink);
+  --popover: var(--paper-card);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--paper);
+  --secondary: var(--stone-50);
+  --secondary-foreground: var(--ink);
+  --muted: var(--stone-100);
+  --muted-foreground: var(--stone-400);
+  --accent: var(--signal);
+  --accent-foreground: var(--paper-card);
+  --destructive: var(--critical);
+  --destructive-foreground: var(--paper-card);
+  --border: var(--stone-100);
+  --input: var(--stone-100);
+  --ring: var(--signal);
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: var(--paper-dark);
+  --foreground: var(--ink-dark);
+  --card: var(--paper-card-dark);
+  --card-foreground: var(--ink-dark);
+  --popover: var(--paper-card-dark);
+  --popover-foreground: var(--ink-dark);
+  --primary: var(--ink-dark);
+  --primary-foreground: var(--paper-dark);
+  --secondary: #1E2028;
+  --secondary-foreground: var(--ink-dark);
+  --muted: #1E2028;
+  --muted-foreground: var(--stone-300);
+  --accent: var(--signal-dark);
+  --accent-foreground: var(--paper-dark);
+  --border: var(--border-dark);
+  --input: var(--border-dark);
+}
+
+@theme inline {
+  --font-sans: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --font-display: 'Inter Tight', 'Inter', sans-serif;
+  
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  
+  /* Custom Inha-Catch colors */
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+  --color-paper-card: var(--paper-card);
+  --color-stone-50: var(--stone-50);
+  --color-stone-100: var(--stone-100);
+  --color-stone-200: var(--stone-200);
+  --color-stone-300: var(--stone-300);
+  --color-stone-400: var(--stone-400);
+  --color-stone-500: var(--stone-500);
+  --color-signal: var(--signal);
+  --color-signal-soft: var(--signal-soft);
+  --color-critical: var(--critical);
+  
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Paper grain noise texture */
+.paper-grain {
+  position: relative;
+}
+.paper-grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  border-radius: inherit;
+}
+.dark .paper-grain::before {
+  opacity: 0.015;
+}
+
+/* Hide scrollbar */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Tabular nums for mono text */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Line height for Korean text */
+.leading-korean {
+  line-height: 1.65;
+}
+
+/* Tracking for display text */
+.tracking-display {
+  letter-spacing: -0.03em;
+}
+
+.tracking-tight-custom {
+  letter-spacing: -0.01em;
+}

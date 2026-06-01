@@ -5,7 +5,6 @@ import { Home, Search, Bookmark, Bell, UserCircle } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useUser } from '@/context/UserContext';
-import { Redirect } from 'expo-router';
 import { View, ActivityIndicator } from 'react-native';
 import api from '@/api/axios';
 
@@ -26,13 +25,15 @@ export default function TabLayout() {
   }, [profile.isLoggedIn]);
 
   useEffect(() => {
+    if (!profile.isLoggedIn) return;
     fetchUnreadCount();
     // 30초마다 읽지 않은 알림 수 갱신
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
-  }, [fetchUnreadCount]);
+  }, [fetchUnreadCount, profile.isLoggedIn]);
 
-  if (isLoading) {
+  // 비로그인 시 ActivityIndicator만 표시. navigate는 호출자(profile.tsx 등)가 DevSettings.reload()로 처리
+  if (isLoading || !profile.isLoggedIn) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -40,28 +41,24 @@ export default function TabLayout() {
     );
   }
 
-  // 비로그인 시 Welcome 화면으로 리다이렉트
-  if (!profile.isLoggedIn) {
-    return <Redirect href="/" />;
-  }
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.tabIconDefault,
+        tabBarActiveTintColor: colors.ink,
+        tabBarInactiveTintColor: colors.stone300,
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: colors.background,
+          backgroundColor: colors.paperCard,
           borderTopWidth: 1,
-          borderTopColor: colors.border,
-          height: 60,
+          borderTopColor: colors.stone100,
+          height: 64,
           paddingBottom: 8,
           paddingTop: 8,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '500',
+          fontFamily: 'Pretendard-Medium',
         }
       }}>
       <Tabs.Screen

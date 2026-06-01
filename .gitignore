@@ -1,3 +1,39 @@
+# 시크릿 / 환경변수
+.env
+.env.local
+.env.*.local
+inha-catch-server/.env
+inha-catch-app/.env
 inha-catch-server/src/main/resources/application-local.properties
 inha-catch-server/src/main/resources/firebase-service-account.json
+inha-catch-server/local.properties
 
+# 환경별 Claude Code 설정 (개인 환경 종속)
+.claude/settings.local.json
+
+# Firebase 서비스 계정 키 (절대 커밋 금지)
+**/firebase-service-account*.json
+**/google-services.json
+**/GoogleService-Info.plist
+
+# 의존성
+node_modules/
+inha-catch-server/build/
+inha-catch-server/bin/
+inha-catch-server/.gradle/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# 로그
+*.log
+inha-catch-server/build.log
+
+# Expo prebuild 산출물 (bare workflow 전환 후 검토 필요)
+# 여기는 커밋할지 말지 팀 결정. 기본은 커밋 제외.
+inha-catch-app/ios/
+inha-catch-app/android/
+inha-catch-app/.expo/

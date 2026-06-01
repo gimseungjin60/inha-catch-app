@@ -22,16 +22,20 @@ public class CrawlService {
     private static final String SOURCE_SITE = "inhatc";
 
     private final InhatcCrawler crawler = new InhatcCrawler();
+    private final WevityCrawler wevityCrawler = new WevityCrawler();
+    private final ThinkContestCrawler thinkContestCrawler = new ThinkContestCrawler();
     private final ScholarshipRepository repository;
     private final GeminiService geminiService;
     private final TransactionTemplate transactionTemplate;
     private final ApplicationEventPublisher eventPublisher;
+    private final JobAlioFetcher jobAlioFetcher;
 
-    public CrawlService(ScholarshipRepository repository, GeminiService geminiService, PlatformTransactionManager transactionManager, ApplicationEventPublisher eventPublisher) {
+    public CrawlService(ScholarshipRepository repository, GeminiService geminiService, PlatformTransactionManager transactionManager, ApplicationEventPublisher eventPublisher, JobAlioFetcher jobAlioFetcher) {
         this.repository = repository;
         this.geminiService = geminiService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.eventPublisher = eventPublisher;
+        this.jobAlioFetcher = jobAlioFetcher;
     }
 
     public List<ScholarshipDto> crawlAll() throws Exception {
@@ -54,6 +58,7 @@ public class CrawlService {
             crawler.crawlDetail(dto);
             dto.setSourceSite(SOURCE_SITE);
             dto.setBoardId("17");
+            dto.setCategory("SCHOLARSHIP");
             eventPublisher.publishEvent(new CrawlEvent(dto));
             publishedCount++;
         }
@@ -65,11 +70,32 @@ public class CrawlService {
             crawler.crawlDetail(dto);
             dto.setSourceSite(SOURCE_SITE);
             dto.setBoardId("contest");
+            dto.setCategory("CONTEST");
             eventPublisher.publishEvent(new CrawlEvent(dto));
             publishedCount++;
         }
 
-        return "전체 크롤링 수집: " + publishedCount + "건 (장학 " + scholarships.size() + " + 공모전 " + contests.size() + ") 비동기 파이프라인 대기열 추가 완료";
+        // 3. 인하공전 취업게시판
+        List<ScholarshipDto> jobs = crawler.crawlJobPages();
+        for (ScholarshipDto dto : jobs) {
+            if (dto.getArticleId() == null) continue;
+            crawler.crawlDetail(dto);
+            dto.setSourceSite(SOURCE_SITE);
+            dto.setBoardId("job");
+            dto.setCategory("JOB");
+            eventPublisher.publishEvent(new CrawlEvent(dto));
+            publishedCount++;
+        }
+
+        // 4. 잡알리오 (공공기관 채용정보 OpenAPI) — 진행중인 공고만
+        int jobalioPublished = publishJobalio();
+
+        return "전체 크롤링 수집: " + (publishedCount + jobalioPublished)
+                + "건 (장학 " + scholarships.size()
+                + " + 공모전 " + contests.size()
+                + " + 인하취업 " + jobs.size()
+                + " + 잡알리오 " + jobalioPublished
+                + ") 비동기 파이프라인 대기열 추가 완료";
     }
 
     public String crawlAndSaveIncremental() throws Exception {
@@ -88,6 +114,7 @@ public class CrawlService {
             crawler.crawlDetail(dto);
             dto.setSourceSite(SOURCE_SITE);
             dto.setBoardId("17");
+            dto.setCategory("SCHOLARSHIP");
             eventPublisher.publishEvent(new CrawlEvent(dto));
             publishedCount++;
         }
@@ -105,11 +132,57 @@ public class CrawlService {
             crawler.crawlDetail(dto);
             dto.setSourceSite(SOURCE_SITE);
             dto.setBoardId("contest");
+            dto.setCategory("CONTEST");
             eventPublisher.publishEvent(new CrawlEvent(dto));
             publishedCount++;
         }
 
-        return "증분 크롤링 수집: " + publishedCount + "건 비동기 파이프라인 대기열 추가 완료";
+        // 3. 인하공전 취업게시판 증분
+        long lastJobId = repository
+                .findTopBySourceSiteAndBoardIdOrderByArticleIdDesc(SOURCE_SITE, "job")
+                .map(Scholarship::getArticleId)
+                .orElse(0L);
+
+        List<ScholarshipDto> jobs = crawler.crawlJobPages();
+        for (int i = jobs.size() - 1; i >= 0; i--) {
+            ScholarshipDto dto = jobs.get(i);
+            if (dto.getArticleId() == null || dto.getArticleId() <= lastJobId) continue;
+            crawler.crawlDetail(dto);
+            dto.setSourceSite(SOURCE_SITE);
+            dto.setBoardId("job");
+            dto.setCategory("JOB");
+            eventPublisher.publishEvent(new CrawlEvent(dto));
+            publishedCount++;
+        }
+
+        // 4. 잡알리오 — 진행중 공고 풀-페치 후 파이프라인이 hash 로 dedup
+        int jobalioPublished = publishJobalio();
+
+        return "증분 크롤링 수집: " + (publishedCount + jobalioPublished) + "건 (잡알리오 " + jobalioPublished + ") 비동기 파이프라인 대기열 추가 완료";
+    }
+
+    /**
+     * 잡알리오 OpenAPI 호출 후 신규/변경분만 파이프라인에 발행.
+     * (hash 기반 dedup 은 CrawlPipeline 이 담당)
+     */
+    private int publishJobalio() {
+        if (!jobAlioFetcher.isConfigured()) {
+            log.info("[잡알리오] API 키 미설정 — 스킵");
+            return 0;
+        }
+        int count = 0;
+        try {
+            // 최대 5페이지 × 100건 = 500건 상한 (안전장치)
+            List<ScholarshipDto> dtos = jobAlioFetcher.fetchOngoing(5, 100);
+            for (ScholarshipDto dto : dtos) {
+                if (dto.getArticleId() == null) continue;
+                eventPublisher.publishEvent(new CrawlEvent(dto));
+                count++;
+            }
+        } catch (Exception e) {
+            log.error("[잡알리오] 발행 실패", e);
+        }
+        return count;
     }
 
     public String backfillSummaries() {
@@ -178,6 +251,90 @@ public class CrawlService {
         long count = repository.count();
         repository.deleteAll();
         return "DB 초기화 완료. 삭제된 기존 공고 수: " + count;
+    }
+
+    /**
+     * 노후화(과거 연도/마감) 공고 일괄 삭제. 정책 기준은 {@link com.example.demo.pipeline.CrawlPipeline#isOutdated}.
+     * currentYear(예: 2026)와 currentYear-1(2025)만 유지.
+     */
+    public String purgeOutdated() {
+        List<Scholarship> all = repository.findAll();
+        int deleted = 0;
+        int kept = 0;
+        for (Scholarship s : all) {
+            if (com.example.demo.pipeline.CrawlPipeline.isOutdated(s.getTitle(), s.getContent(), s.getApplyPeriod())) {
+                repository.delete(s);
+                deleted++;
+            } else {
+                kept++;
+            }
+        }
+        return "과거 데이터 정리 완료: " + deleted + "건 삭제 / " + kept + "건 유지";
+    }
+
+    // ── 외부 크롤링 (위비티/씽굿) ──
+
+    /**
+     * 위비티 공모전 크롤링 및 저장 (이벤트 발행)
+     */
+    public String crawlWevity() throws Exception {
+        int publishedCount = 0;
+        int failedCount = 0;
+        List<ScholarshipDto> dtos = wevityCrawler.crawlAllPages(5); // 5페이지 (~75건)
+        for (ScholarshipDto dto : dtos) {
+            if (dto.getArticleId() == null) continue;
+            if (repository.existsBySourceSiteAndBoardIdAndArticleId(dto.getSourceSite(), dto.getBoardId(), dto.getArticleId())) {
+                continue;
+            }
+            try {
+                wevityCrawler.crawlDetail(dto);
+                eventPublisher.publishEvent(new CrawlEvent(dto));
+                publishedCount++;
+            } catch (Exception e) {
+                log.warn("[위비티] 상세 크롤링 실패 link={}: {}", dto.getLink(), e.getMessage());
+                failedCount++;
+            }
+        }
+        return "[위비티] 크롤링 완료: 성공 " + publishedCount + "건 / 실패 " + failedCount + "건";
+    }
+
+    /**
+     * 씽굿 공모전 크롤링 및 저장 (이벤트 발행)
+     */
+    public String crawlThinkContest() throws Exception {
+        int publishedCount = 0;
+        int skippedCount = 0;
+        List<ScholarshipDto> dtos = thinkContestCrawler.crawlAllPages(20);
+        for (ScholarshipDto dto : dtos) {
+            if (dto.getArticleId() == null) continue;
+            if (repository.existsBySourceSiteAndBoardIdAndArticleId(dto.getSourceSite(), dto.getBoardId(), dto.getArticleId())) {
+                skippedCount++;
+                continue;
+            }
+            eventPublisher.publishEvent(new CrawlEvent(dto));
+            publishedCount++;
+        }
+        return "[씽굿] 크롤링 완료: 신규 " + publishedCount + "건 / 중복 " + skippedCount + "건";
+    }
+
+    /**
+     * 외부 크롤러 일괄 실행 (위비티 + 씽굿)
+     */
+    public String crawlAllExternal() throws Exception {
+        StringBuilder sb = new StringBuilder();
+        try {
+            sb.append(crawlWevity()).append("\n");
+        } catch (Exception e) {
+            log.error("[외부 크롤러] 위비티 실패", e);
+            sb.append("[위비티] 크롤링 실패: ").append(e.getMessage()).append("\n");
+        }
+        try {
+            sb.append(crawlThinkContest()).append("\n");
+        } catch (Exception e) {
+            log.error("[외부 크롤러] 씽굿 실패", e);
+            sb.append("[씽굿] 크롤링 실패: ").append(e.getMessage()).append("\n");
+        }
+        return sb.toString().trim();
     }
 
     private void extractAndSetDateFromSummary(Scholarship post, String detailSummary) {

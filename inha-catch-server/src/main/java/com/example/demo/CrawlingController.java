@@ -1,6 +1,7 @@
 package com.example.demo;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -8,6 +9,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/crawl")
+@PreAuthorize("hasRole('ADMIN')")
 public class CrawlingController {
 
     private final CrawlService crawlService;
@@ -58,5 +60,27 @@ public class CrawlingController {
     @GetMapping("/clear")
     public String clearDatabase() {
         return crawlService.clearDatabase();
+    }
+
+    @GetMapping("/purge-outdated")
+    public String purgeOutdated() {
+        return crawlService.purgeOutdated();
+    }
+
+    // ── 외부 크롤링 (위비티/씽굿) ──
+
+    @GetMapping("/external")
+    public String crawlAllExternal() throws Exception {
+        return crawlService.crawlAllExternal();
+    }
+
+    @GetMapping("/external/wevity")
+    public String crawlWevity() throws Exception {
+        return crawlService.crawlWevity();
+    }
+
+    @GetMapping("/external/thinkcontest")
+    public String crawlThinkContest() throws Exception {
+        return crawlService.crawlThinkContest();
     }
 }
