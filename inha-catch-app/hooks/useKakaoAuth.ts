@@ -1,15 +1,30 @@
 import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import api from '@/api/axios';
 
-// Expo AuthSession redirect URI 자동 생성
-// → 처음 호출 시 콘솔에 찍히는 값을 카카오 개발자 콘솔의 Redirect URI에 등록해야 함
-const REDIRECT_URI = makeRedirectUri({ preferLocalhost: false });
-console.log('[Kakao] REDIRECT_URI =', REDIRECT_URI);
+// ── Redirect URI 환경별 분기 ────────────────────────────────────
+// 카카오는 http(s) 스킴만 허용 (custom scheme 등록 불가).
+// 카카오 콘솔에 아래 2개만 등록:
+//   1) Web:                 http://localhost:8081
+//   2) Expo Go + Dev Client: https://auth.expo.io/@gimseungjin60/InhaCatch
+//
+// SSR/static render 시점엔 window가 없으므로 반드시 호출 시점에 lazy 계산.
+// ────────────────────────────────────────────────────────────────
+const EXPO_PROXY_URI = 'https://auth.expo.io/@gimseungjin60/InhaCatch';
 
-// 카카오 REST API 키 (카카오 개발자 콘솔에서 발급)
-// app.json의 extra.kakaoRestApiKey 또는 환경변수에서 읽음
+function resolveRedirectUri(): string {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      return window.location.origin;
+    }
+    return 'http://localhost:8081';
+  }
+  // 모바일은 항상 Expo proxy 경유 (카카오는 https만 허용).
+  // Production native 빌드에서는 별도 작업 필요 (카카오 SDK 또는 Universal Link).
+  return EXPO_PROXY_URI;
+}
+
 const KAKAO_CLIENT_ID =
   (Constants.expoConfig?.extra?.kakaoRestApiKey as string | undefined) ??
   process.env.EXPO_PUBLIC_KAKAO_REST_API_KEY ??
@@ -21,8 +36,22 @@ export async function loginWithKakao(): Promise<{
   user: any;
   isNewUser: boolean;
 } | null> {
+  const REDIRECT_URI = resolveRedirectUri();
+  console.log(
+    '[Kakao] resolved =',
+    JSON.stringify(REDIRECT_URI),
+    '| platform=',
+    Platform.OS,
+    '| ownership=',
+    Constants.appOwnership ?? 'null',
+  );
+
+  if (!REDIRECT_URI) {
+    console.error('[Kakao] REDIRECT_URI 가 비어있습니다.');
+    return null;
+  }
+
   try {
-    // 1. 카카오 OAuth 인가 페이지 열기
     const authUrl =
       `https://kauth.kakao.com/oauth/authorize?` +
       `client_id=${KAKAO_CLIENT_ID}` +
@@ -35,7 +64,6 @@ export async function loginWithKakao(): Promise<{
       return null;
     }
 
-    // 2. redirect URL에서 인가코드 추출
     const url = new URL(result.url);
     const code = url.searchParams.get('code');
 
@@ -44,7 +72,6 @@ export async function loginWithKakao(): Promise<{
       return null;
     }
 
-    // 3. 서버에 인가코드 전송 → JWT 토큰 수신
     const res = await api.post('/api/auth/kakao', {
       code,
       redirectUri: REDIRECT_URI,
