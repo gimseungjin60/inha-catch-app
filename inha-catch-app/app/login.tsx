@@ -18,9 +18,8 @@ import Colors from '@/constants/Colors'
 import Fonts from '@/constants/Fonts'
 import api from '@/api/axios'
 import { useColorScheme } from '@/components/useColorScheme'
-import { ChevronLeft, MessageCircle } from 'lucide-react-native'
+import { ChevronLeft } from 'lucide-react-native'
 import { setJwtToken, setRefreshToken } from '@/lib/secureStorage'
-import { loginWithKakao } from '@/hooks/useKakaoAuth'
 
 const showAlert = (title: string, msg: string) => {
   Platform.OS === 'web' ? window.alert(msg) : Alert.alert(title, msg)
@@ -35,7 +34,6 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isKakaoLoading, setIsKakaoLoading] = useState(false)
   const [showResetModal, setShowResetModal] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [isResetting, setIsResetting] = useState(false)
@@ -80,27 +78,6 @@ export default function LoginScreen() {
     }
   }
 
-  const handleKakaoLogin = async () => {
-    setIsKakaoLoading(true)
-    try {
-      const result = await loginWithKakao()
-      if (result) {
-        await saveLoginData(result)
-        if (result.isNewUser) {
-          router.replace({ pathname: '/agree-terms', params: { next: '/(tabs)/profile' } } as any)
-        } else {
-          router.replace('/(tabs)')
-        }
-      } else {
-        showAlert('로그인 실패', '카카오 로그인이 취소되었습니다.')
-      }
-    } catch (err: any) {
-      showAlert('로그인 실패', '카카오 로그인 중 오류가 발생했습니다.')
-    } finally {
-      setIsKakaoLoading(false)
-    }
-  }
-
   const handleResetPassword = async () => {
     if (!resetEmail.trim()) {
       showAlert('알림', '이메일을 입력해주세요.')
@@ -138,9 +115,12 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.content}>
-          <Text style={[styles.meta, { color: colors.stone400 }]}>로그인 ─ SIGN IN</Text>
+          <Text style={[styles.meta, { color: colors.stone400 }]}>SIGN IN</Text>
           <Text style={[styles.title, { color: colors.ink }]}>
             다시 만나서{'\n'}반가워요.
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.stone400 }]}>
+            가입한 이메일 또는 소셜 계정으로 로그인하세요.
           </Text>
 
           <View style={styles.form}>
@@ -192,28 +172,7 @@ export default function LoginScreen() {
               )}
             </Pressable>
 
-            <View style={styles.dividerRow}>
-              <View style={[styles.dividerLine, { backgroundColor: colors.stone100 }]} />
-              <Text style={[styles.dividerText, { color: colors.stone400 }]}>또는</Text>
-              <View style={[styles.dividerLine, { backgroundColor: colors.stone100 }]} />
-            </View>
-
-            <Pressable
-              style={[styles.kakaoBtn, { opacity: isKakaoLoading ? 0.6 : 1 }]}
-              onPress={handleKakaoLogin}
-              disabled={isKakaoLoading}
-            >
-              {isKakaoLoading ? (
-                <ActivityIndicator color="#3C1E1E" />
-              ) : (
-                <>
-                  <MessageCircle size={18} color="#3C1E1E" fill="#3C1E1E" />
-                  <Text style={styles.kakaoBtnText}>카카오로 시작하기</Text>
-                </>
-              )}
-            </Pressable>
-
-            <View style={styles.footerRow}>
+            <View style={[styles.footerRow, { marginTop: 28 }]}>
               <Text style={[styles.footerText, { color: colors.stone400 }]}>
                 계정이 없으신가요?
               </Text>
@@ -292,7 +251,13 @@ const styles = StyleSheet.create({
     fontSize: 32,
     lineHeight: 38,
     letterSpacing: -0.8,
-    marginBottom: 36,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontFamily: Fonts.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 28,
   },
   form: {
     flex: 1,
@@ -323,43 +288,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   loginBtn: {
-    height: 50,
-    borderRadius: 10,
+    height: 52,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
   loginBtnText: {
     fontFamily: Fonts.semibold,
     fontSize: 15,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-  },
-  dividerText: {
-    fontFamily: Fonts.medium,
-    fontSize: 12,
-    marginHorizontal: 12,
-  },
-  kakaoBtn: {
-    flexDirection: 'row',
-    height: 50,
-    backgroundColor: '#FEE500',
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 24,
-  },
-  kakaoBtnText: {
-    fontFamily: Fonts.semibold,
-    fontSize: 14,
-    color: '#3C1E1E',
   },
   footerRow: {
     flexDirection: 'row',
