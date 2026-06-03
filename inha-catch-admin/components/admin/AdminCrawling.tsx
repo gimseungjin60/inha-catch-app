@@ -17,6 +17,7 @@ type CrawlAction = {
   label: string
   description: string
   endpoint: string
+  method: 'POST' | 'DELETE'
   icon: typeof Play
   variant: 'default' | 'danger'
 }
@@ -27,6 +28,7 @@ const ACTIONS: CrawlAction[] = [
     label: '증분 크롤링',
     description: '인하공전 신규 게시글만 수집 (권장)',
     endpoint: '/api/crawl/save',
+    method: 'POST',
     icon: RefreshCw,
     variant: 'default',
   },
@@ -35,6 +37,7 @@ const ACTIONS: CrawlAction[] = [
     label: '전체 크롤링',
     description: '인하공전 전체 게시판 재수집',
     endpoint: '/api/crawl/save-all',
+    method: 'POST',
     icon: FileDown,
     variant: 'default',
   },
@@ -43,6 +46,7 @@ const ACTIONS: CrawlAction[] = [
     label: 'AI 요약 채우기',
     description: '요약이 없는 공고에 Gemini 요약 생성',
     endpoint: '/api/crawl/backfill',
+    method: 'POST',
     icon: Sparkles,
     variant: 'default',
   },
@@ -51,6 +55,7 @@ const ACTIONS: CrawlAction[] = [
     label: '외부 일괄 (위비티 + 씽굿)',
     description: '위비티 + 씽굿 동시 수집',
     endpoint: '/api/crawl/external',
+    method: 'POST',
     icon: Globe,
     variant: 'default',
   },
@@ -59,6 +64,7 @@ const ACTIONS: CrawlAction[] = [
     label: '위비티만',
     description: 'wevity.com 공모전/대외활동',
     endpoint: '/api/crawl/external/wevity',
+    method: 'POST',
     icon: Globe,
     variant: 'default',
   },
@@ -67,6 +73,7 @@ const ACTIONS: CrawlAction[] = [
     label: '씽굿만',
     description: 'thinkcontest.com 공모전',
     endpoint: '/api/crawl/external/thinkcontest',
+    method: 'POST',
     icon: Globe,
     variant: 'default',
   },
@@ -75,6 +82,7 @@ const ACTIONS: CrawlAction[] = [
     label: '목록만 미리보기',
     description: '크롤링 결과를 DB 저장 없이 조회',
     endpoint: '/api/crawl/list',
+    method: 'POST',
     icon: Activity,
     variant: 'default',
   },
@@ -83,6 +91,7 @@ const ACTIONS: CrawlAction[] = [
     label: '전체 공고 삭제',
     description: '⚠️ 복구 불가. 신중히 사용하세요.',
     endpoint: '/api/crawl/clear',
+    method: 'DELETE',
     icon: Trash2,
     variant: 'danger',
   },
@@ -153,7 +162,7 @@ export function AdminCrawling() {
       const headers: Record<string, string> = {}
       if (token) headers['Authorization'] = `Bearer ${token}`
 
-      const res = await fetch(`${API_BASE}${action.endpoint}`, { headers })
+      const res = await fetch(`${API_BASE}${action.endpoint}`, { method: action.method, headers })
       const contentType = res.headers.get('content-type') ?? ''
       let body: string
       if (contentType.includes('application/json')) {
