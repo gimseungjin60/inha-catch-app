@@ -75,10 +75,12 @@ public class Scholarship {
 
     @Lob
     @Column(name = "basic_summary", columnDefinition = "LONGTEXT")
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(using = com.example.demo.SummaryDisplaySerializer.class)
     private String basicSummary;
 
     @Lob
     @Column(name = "detail_summary", columnDefinition = "LONGTEXT")
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(using = com.example.demo.SummaryDisplaySerializer.class)
     private String detailSummary;
 
     @Lob
