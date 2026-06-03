@@ -11,8 +11,10 @@ import { getJwtToken, getRefreshToken, setJwtToken, clearAuthTokens } from '@/li
 // 터널 사용 시: 'https://xxx.loca.lt' / 로컬 테스트: null
 const TUNNEL_URL: string | null = null;
 
-// 같은 Wi-Fi에서 테스트 시 PC IP 직접 지정 (ipconfig로 확인)
-const LOCAL_IP = '172.20.10.5';
+// (개발 전용) iOS 실기기/시뮬레이터에서 로컬 서버에 붙을 때 쓰는 개발자 PC의 LAN IP.
+// EXPO_PUBLIC_API_URL 이 설정돼 있으면 이 값은 무시됨.
+// 본인 PC IP로 교체하거나 .env 의 EXPO_PUBLIC_LOCAL_IP 로 지정 (ipconfig / ifconfig 로 확인).
+const LOCAL_DEV_IP = process.env.EXPO_PUBLIC_LOCAL_IP?.trim() || '172.20.10.5';
 
 // Android 에뮬레이터는 10.0.2.2가 PC의 localhost를 가리킴 (특수 IP)
 const ANDROID_EMULATOR_HOST = '10.0.2.2';
@@ -30,7 +32,7 @@ const getApiUrl = () => {
   // Android 에뮬레이터 → PC localhost 자동 연결
   if (Platform.OS === 'android') return `http://${ANDROID_EMULATOR_HOST}:8080`;
   // iOS (실기기 동일 Wi-Fi 테스트용 — 배포 시 EXPO_PUBLIC_API_URL로 대체)
-  return `http://${LOCAL_IP}:8080`;
+  return `http://${LOCAL_DEV_IP}:8080`;
 };
 
 export const apiUrl = getApiUrl();
