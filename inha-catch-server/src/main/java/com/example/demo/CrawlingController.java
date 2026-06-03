@@ -37,49 +37,49 @@ public class CrawlingController {
         ));
     }
 
-    @GetMapping("/list")
+    @PostMapping("/list")
     public List<ScholarshipDto> crawlList() throws Exception {
         return crawlService.crawlAll();
     }
 
-    @GetMapping("/save-all")
+    @PostMapping("/save-all")
     public String crawlAndSaveAll() throws Exception {
         return crawlService.crawlAndSaveAll();
     }
 
-    @GetMapping("/save")
+    @PostMapping("/save")
     public String crawlAndSave() throws Exception {
         return crawlService.crawlAndSaveIncremental();
     }
 
-    @GetMapping("/backfill")
+    @PostMapping("/backfill")
     public String backfillSummaries() {
         return crawlService.backfillSummaries();
     }
 
-    @GetMapping("/clear")
+    @DeleteMapping("/clear")
     public String clearDatabase() {
         return crawlService.clearDatabase();
     }
 
-    @GetMapping("/purge-outdated")
+    @DeleteMapping("/purge-outdated")
     public String purgeOutdated() {
         return crawlService.purgeOutdated();
     }
 
     // ── 외부 크롤링 (위비티/씽굿) ──
 
-    @GetMapping("/external")
+    @PostMapping("/external")
     public String crawlAllExternal() throws Exception {
         return crawlService.crawlAllExternal();
     }
 
-    @GetMapping("/external/wevity")
+    @PostMapping("/external/wevity")
     public String crawlWevity() throws Exception {
         return crawlService.crawlWevity();
     }
 
-    @GetMapping("/external/thinkcontest")
+    @PostMapping("/external/thinkcontest")
     public String crawlThinkContest() throws Exception {
         return crawlService.crawlThinkContest();
     }

@@ -106,7 +106,11 @@ export default function AdminScreen() {
     setRunningAction(action);
     addLog(`${label} 시작...`);
     try {
-      const res = await api.get(`/api/crawl/${action}`, { timeout: 300000 });
+      // 부수효과가 있는 크롤 액션은 POST(삭제는 DELETE)로 호출 (서버 매핑 변경에 맞춤)
+      const res =
+        action === 'clear'
+          ? await api.delete(`/api/crawl/${action}`, { timeout: 300000 })
+          : await api.post(`/api/crawl/${action}`, null, { timeout: 300000 });
       const msg = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
       addLog(`✓ ${label} 완료: ${msg}`);
       fetchStats();
