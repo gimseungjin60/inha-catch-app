@@ -55,6 +55,21 @@ public class GeminiService {
         "- 무료 API 한도를 아끼기 위해 불필요한 텍스트는 90% 이상 쳐내고 알맹이만 남겨.\n\n" +
         "분석할 공고문 텍스트:\n";
 
+    /**
+     * 요약 문자열이 "내부 에러로 생성 실패한 값"인지 판별한다.
+     * 직렬화(앱 응답) 시점에 사용자에게 가리는 기준이며, backfill 재생성 판별과는 별개로
+     * 에러성 문구만 대상으로 한다. (SKIP/노후화/"본문 내용이 없어…"는 정상 비요약이므로 제외)
+     * DB 저장값·getter에는 영향을 주지 않는다.
+     */
+    public static boolean isErrorSummary(String s) {
+        if (s == null) return false;
+        return s.startsWith("[AI 요약 오류]")
+                || s.startsWith("[AI 요약 실패]")
+                || s.startsWith("[AI 요약 중단]")
+                || s.equals("Gemini API 키가 설정되지 않았습니다.")
+                || s.equals("요약할 내용이 없습니다.");
+    }
+
     @Value("${gemini.api.key:}")
     private String apiKey;
 
