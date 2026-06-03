@@ -1,7 +1,9 @@
 package com.example.demo;
 
+import com.example.demo.entity.CrawlErrorLog;
 import com.example.demo.entity.Scholarship;
 import com.example.demo.entity.ScholarshipAttachment;
+import com.example.demo.repository.CrawlErrorLogRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,13 +31,49 @@ public class CrawlService {
     private final TransactionTemplate transactionTemplate;
     private final ApplicationEventPublisher eventPublisher;
     private final JobAlioFetcher jobAlioFetcher;
+    private final CrawlErrorLogRepository errorLogRepository;
 
-    public CrawlService(ScholarshipRepository repository, GeminiService geminiService, PlatformTransactionManager transactionManager, ApplicationEventPublisher eventPublisher, JobAlioFetcher jobAlioFetcher) {
+    public CrawlService(ScholarshipRepository repository, GeminiService geminiService, PlatformTransactionManager transactionManager, ApplicationEventPublisher eventPublisher, JobAlioFetcher jobAlioFetcher, CrawlErrorLogRepository errorLogRepository) {
         this.repository = repository;
         this.geminiService = geminiService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.eventPublisher = eventPublisher;
         this.jobAlioFetcher = jobAlioFetcher;
+        this.errorLogRepository = errorLogRepository;
+    }
+
+    /**
+     * 원시 목록 수집 결과의 건전성을 점검해 이상 시 CrawlErrorLog에 기록한다.
+     * - 0건: 사이트 구조 변경 의심
+     * - 제목 있는 항목 0개: 파싱 셀렉터 변경 의심
+     * 증분 필터 이전의 "원시 목록"에 대해서만 호출할 것(증분 신규 0건은 정상이므로).
+     */
+    private void checkCrawlHealth(String source, List<ScholarshipDto> rawList) {
+        try {
+            if (rawList == null || rawList.isEmpty()) {
+                errorLogRepository.save(new CrawlErrorLog(
+                        source, "list:" + source, source + ": 목록 0건 수집 - 사이트 구조 변경 의심"));
+                log.warn("[크롤 건전성] {}: 목록 0건 수집", source);
+                return;
+            }
+            long titled = rawList.stream()
+                    .filter(d -> d.getTitle() != null && !d.getTitle().isBlank())
+                    .count();
+            if (titled == 0) {
+                errorLogRepository.save(new CrawlErrorLog(
+                        source, "list:" + source,
+                        source + ": 제목 누락 " + rawList.size() + "건 - 파싱 셀렉터 변경 의심"));
+                log.warn("[크롤 건전성] {}: 제목 누락 {}건", source, rawList.size());
+            }
+        } catch (Exception e) {
+            // 건전성 기록 실패가 크롤 본흐름을 막지 않도록 방어
+            log.warn("[크롤 건전성] 기록 실패 ({}): {}", source, e.getMessage());
+        }
+    }
+
+    /** 어드민 조회용: 최근 크롤 에러 로그 100건(최신순). */
+    public List<CrawlErrorLog> getRecentErrors() {
+        return errorLogRepository.findTop100ByOrderByCreatedAtDesc();
     }
 
     public List<ScholarshipDto> crawlAll() throws Exception {
@@ -53,6 +91,7 @@ public class CrawlService {
 
         // 1. 장학정보 크롤링
         List<ScholarshipDto> scholarships = crawler.crawlScholarshipPages();
+        checkCrawlHealth("inhatc-scholarship", scholarships);
         for (ScholarshipDto dto : scholarships) {
             if (dto.getArticleId() == null) continue;
             crawler.crawlDetail(dto);
@@ -65,6 +104,7 @@ public class CrawlService {
 
         // 2. 공모전 크롤링
         List<ScholarshipDto> contests = crawler.crawlContestPages();
+        checkCrawlHealth("inhatc-contest", contests);
         for (ScholarshipDto dto : contests) {
             if (dto.getArticleId() == null) continue;
             crawler.crawlDetail(dto);
@@ -77,6 +117,7 @@ public class CrawlService {
 
         // 3. 인하공전 취업게시판
         List<ScholarshipDto> jobs = crawler.crawlJobPages();
+        checkCrawlHealth("inhatc-job", jobs);
         for (ScholarshipDto dto : jobs) {
             if (dto.getArticleId() == null) continue;
             crawler.crawlDetail(dto);
@@ -108,6 +149,7 @@ public class CrawlService {
                 .orElse(0L);
 
         List<ScholarshipDto> scholarships = crawler.crawlScholarshipPages();
+        checkCrawlHealth("inhatc-scholarship", scholarships);
         for (int i = scholarships.size() - 1; i >= 0; i--) {
             ScholarshipDto dto = scholarships.get(i);
             if (dto.getArticleId() == null || dto.getArticleId() <= lastScholarshipId) continue;
@@ -126,6 +168,7 @@ public class CrawlService {
                 .orElse(0L);
 
         List<ScholarshipDto> contests = crawler.crawlContestPages();
+        checkCrawlHealth("inhatc-contest", contests);
         for (int i = contests.size() - 1; i >= 0; i--) {
             ScholarshipDto dto = contests.get(i);
             if (dto.getArticleId() == null || dto.getArticleId() <= lastContestId) continue;
@@ -144,6 +187,7 @@ public class CrawlService {
                 .orElse(0L);
 
         List<ScholarshipDto> jobs = crawler.crawlJobPages();
+        checkCrawlHealth("inhatc-job", jobs);
         for (int i = jobs.size() - 1; i >= 0; i--) {
             ScholarshipDto dto = jobs.get(i);
             if (dto.getArticleId() == null || dto.getArticleId() <= lastJobId) continue;
@@ -281,6 +325,7 @@ public class CrawlService {
         int publishedCount = 0;
         int failedCount = 0;
         List<ScholarshipDto> dtos = wevityCrawler.crawlAllPages(5); // 5페이지 (~75건)
+        checkCrawlHealth("wevity", dtos);
         for (ScholarshipDto dto : dtos) {
             if (dto.getArticleId() == null) continue;
             if (repository.existsBySourceSiteAndBoardIdAndArticleId(dto.getSourceSite(), dto.getBoardId(), dto.getArticleId())) {
@@ -305,6 +350,7 @@ public class CrawlService {
         int publishedCount = 0;
         int skippedCount = 0;
         List<ScholarshipDto> dtos = thinkContestCrawler.crawlAllPages(20);
+        checkCrawlHealth("thinkcontest", dtos);
         for (ScholarshipDto dto : dtos) {
             if (dto.getArticleId() == null) continue;
             if (repository.existsBySourceSiteAndBoardIdAndArticleId(dto.getSourceSite(), dto.getBoardId(), dto.getArticleId())) {

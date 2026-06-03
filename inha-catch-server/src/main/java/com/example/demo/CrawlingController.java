@@ -25,6 +25,11 @@ public class CrawlingController {
         this.notificationRepository = notificationRepository;
     }
 
+    @GetMapping("/errors")
+    public List<com.example.demo.entity.CrawlErrorLog> getRecentErrors() {
+        return crawlService.getRecentErrors();
+    }
+
     @GetMapping("/stats")
     public ResponseEntity<?> getAdminStats() {
         long totalScholarships = scholarshipRepository.count();

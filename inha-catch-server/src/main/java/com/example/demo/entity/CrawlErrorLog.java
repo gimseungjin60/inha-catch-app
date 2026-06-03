@@ -18,6 +18,11 @@ public class CrawlErrorLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // 어떤 크롤 소스에서 발생했는지 식별 (예: inhatc-scholarship, wevity, thinkcontest).
+    // 파이프라인 catch 등 소스 미지정 기록과의 호환을 위해 nullable.
+    @Column(name = "source", length = 50)
+    private String source;
+
     @Column(name = "target_url", length = 2000, nullable = false)
     private String targetUrl;
 
@@ -29,6 +34,12 @@ public class CrawlErrorLog {
     private LocalDateTime createdAt;
 
     public CrawlErrorLog(String targetUrl, String errorMessage) {
+        this.targetUrl = targetUrl;
+        this.errorMessage = errorMessage;
+    }
+
+    public CrawlErrorLog(String source, String targetUrl, String errorMessage) {
+        this.source = source;
         this.targetUrl = targetUrl;
         this.errorMessage = errorMessage;
     }
