@@ -2,7 +2,9 @@ package com.example.demo;
 
 import com.example.demo.entity.Scholarship;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -39,4 +41,14 @@ public interface ScholarshipRepository extends JpaRepository<Scholarship, Long> 
 
     @Query("SELECT s.category, COUNT(s) FROM Scholarship s GROUP BY s.category")
     List<Object[]> countByCategoryGrouped();
+
+    /**
+     * 저작권 정책(시나리오 A) 마이그레이션용.
+     * 지정한 소스의 본문/요약/관련링크 4개 컬럼만 NULL 처리한다. 다른 컬럼·다른 소스는 건드리지 않는다.
+     * @return 영향받은 행 수
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE Scholarship s SET s.content = NULL, s.basicSummary = NULL, " +
+            "s.detailSummary = NULL, s.relatedLinks = NULL WHERE s.sourceSite IN :sources")
+    int clearExternalContentBySources(@Param("sources") List<String> sources);
 }

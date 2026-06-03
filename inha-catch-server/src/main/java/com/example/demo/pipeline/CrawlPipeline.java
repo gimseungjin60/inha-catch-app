@@ -48,6 +48,12 @@ public class CrawlPipeline {
     private static final String OUTDATED_SUMMARY = "접수 마감되었거나 과거 연도 공지로 판단되어 AI 요약을 생략했습니다.";
 
     /**
+     * 저작권 정책(시나리오 A) 대상 소스. 이 소스들은 본문(content)·AI 요약·관련링크를 저장하지 않고
+     * 사실 메타데이터(제목·주최·접수기간·자격·상금·원문링크)만 보존한다.
+     */
+    private static final java.util.Set<String> METADATA_ONLY_SOURCES = java.util.Set.of("wevity", "thinkcontest");
+
+    /**
      * 노후화된 공지 여부 판단. 정책: "올해(currentYear)와 전년도(currentYear-1)만 허용".
      *  - 제목/본문/접수기간에 언급된 최대 연도가 (currentYear-1) 미만이면 outdated
      *  - 접수기간에 명시된 모든 날짜가 오늘 이전이면 outdated (마감)
@@ -149,6 +155,8 @@ public class CrawlPipeline {
                 // 노후화 필터: 새 게시물이면 저장 자체를 생략
                 boolean outdated = isOutdated(dto.getTitle(), dto.getContent(), dto.getApplyPeriod());
                 boolean isNewPost = (post.getId() == null);
+                // 저작권 정책(시나리오 A): 외부 소스는 메타데이터만 저장
+                boolean metadataOnly = METADATA_ONLY_SOURCES.contains(dto.getSourceSite());
                 if (outdated && isNewPost) {
                     log.info("[스킵] 노후화 데이터 제외: {} ({}/{})", dto.getTitle(), dto.getSourceSite(), dto.getBoardId());
                     return null;
@@ -164,7 +172,7 @@ public class CrawlPipeline {
                 post.setViewCount(dto.getViewCount());
                 post.setNotice(dto.isNotice());
                 post.setHasAttachment(dto.isHasAttachment());
-                post.setContent(convertContentToMarkdown(dto.getContent()));
+                post.setContent(metadataOnly ? null : convertContentToMarkdown(dto.getContent()));
                 post.setContentHash(currentHash);
                 if (dto.getCategory() != null) post.setCategory(dto.getCategory());
                 post.setCompanyName(dto.getCompanyName());
@@ -173,7 +181,11 @@ public class CrawlPipeline {
                 post.setEmploymentType(dto.getEmploymentType());
                 post.setExperienceLevel(dto.getExperienceLevel());
 
-                if (outdated) {
+                if (metadataOnly) {
+                    // 저작권 정책: 외부 소스는 AI 요약을 생성/저장하지 않는다 (원문 링크로 유도)
+                    post.setBasicSummary(null);
+                    post.setDetailSummary(null);
+                } else if (outdated) {
                     post.setBasicSummary(OUTDATED_SUMMARY);
                     post.setDetailSummary(OUTDATED_SUMMARY);
                 } else if (dto.getPrebuiltSummary() != null && !dto.getPrebuiltSummary().isBlank()) {
@@ -218,7 +230,7 @@ public class CrawlPipeline {
                 }
                 post.setEligibility(dto.getEligibility());
                 post.setAmountInfo(dto.getAmountInfo());
-                post.setRelatedLinks(String.join("\n", dto.getRelatedLinks()));
+                post.setRelatedLinks(metadataOnly ? null : String.join("\n", dto.getRelatedLinks()));
 
                 post.getAttachments().clear();
                 for (AttachmentDto attachmentDto : dto.getAttachments()) {
