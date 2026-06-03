@@ -6,8 +6,10 @@ import com.example.demo.entity.User;
 import com.example.demo.entity.UserApplication;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,4 +28,9 @@ public interface UserApplicationRepository extends JpaRepository<UserApplication
 
     @Query("SELECT ua.status AS status, COUNT(ua) AS cnt FROM UserApplication ua WHERE ua.user = :user GROUP BY ua.status")
     List<Object[]> countGroupedByStatus(@Param("user") User user);
+
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM UserApplication ua WHERE ua.user = :user")
+    void deleteAllByUser(@Param("user") User user);
 }

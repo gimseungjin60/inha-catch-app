@@ -24,18 +24,20 @@ public class UserController {
     private final ScholarshipRepository scholarshipRepository;
     private final BookmarkRepository bookmarkRepository;
     private final NotificationRepository notificationRepository;
+    private final UserApplicationRepository userApplicationRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
     public UserController(UserRepository userRepository, UserViewLogRepository viewLogRepository,
                           ScholarshipRepository scholarshipRepository, BookmarkRepository bookmarkRepository,
-                          NotificationRepository notificationRepository, PasswordEncoder passwordEncoder,
-                          JwtUtil jwtUtil) {
+                          NotificationRepository notificationRepository, UserApplicationRepository userApplicationRepository,
+                          PasswordEncoder passwordEncoder, JwtUtil jwtUtil) {
         this.userRepository = userRepository;
         this.viewLogRepository = viewLogRepository;
         this.scholarshipRepository = scholarshipRepository;
         this.bookmarkRepository = bookmarkRepository;
         this.notificationRepository = notificationRepository;
+        this.userApplicationRepository = userApplicationRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
     }
@@ -141,10 +143,13 @@ public class UserController {
             }
         }
 
-        // 1. 연관 데이터 명시적 삭제 (DB FK가 ON DELETE CASCADE라도 JPA 영속성 컨텍스트 안전성 확보)
+        // 1. 연관 데이터 명시적 삭제.
+        //    User 엔티티에 cascade 설정이 없고 DB FK도 ON DELETE CASCADE가 아니므로,
+        //    user_id를 참조하는 모든 엔티티를 여기서 직접 지운 뒤 User를 삭제해야 FK 위반이 없다.
         bookmarkRepository.deleteAllByUser(user);
         notificationRepository.deleteAllByUser(user);
         viewLogRepository.deleteAllByUser(user);
+        userApplicationRepository.deleteAllByUser(user);
 
         // 2. 현재 액세스 토큰 블랙리스트 등록 (즉시 무효화)
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
