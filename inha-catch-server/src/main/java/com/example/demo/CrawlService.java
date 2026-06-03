@@ -298,6 +298,17 @@ public class CrawlService {
     }
 
     /**
+     * 저작권 정책(시나리오 A) 적용: 지정한 외부 소스의 본문/요약/관련링크만 비운다.
+     * 메타데이터(제목·주최·접수기간·자격·상금·원문링크 등)와 다른 소스는 보존한다.
+     * @param sources 비울 대상 소스 목록 (예: ["wevity", "thinkcontest"])
+     * @return 영향받은 행 수
+     */
+    @Transactional
+    public int clearExternalContent(List<String> sources) {
+        return repository.clearExternalContentBySources(sources);
+    }
+
+    /**
      * 노후화(과거 연도/마감) 공고 일괄 삭제. 정책 기준은 {@link com.example.demo.pipeline.CrawlPipeline#isOutdated}.
      * currentYear(예: 2026)와 currentYear-1(2025)만 유지.
      */

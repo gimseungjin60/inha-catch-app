@@ -88,4 +88,33 @@ public class CrawlingController {
     public String crawlThinkContest() throws Exception {
         return crawlService.crawlThinkContest();
     }
+
+    /**
+     * 저작권 정책(시나리오 A) 마이그레이션:
+     * 지정한 소스의 본문(content)·요약(basic/detail)·관련링크(related_links)만 NULL 처리한다.
+     * sources 파라미터가 없으면 아무것도 지우지 않고 400을 반환한다.
+     * 예: DELETE /api/crawl/external/content?sources=wevity,thinkcontest
+     */
+    @DeleteMapping("/external/content")
+    public ResponseEntity<?> clearExternalContent(@RequestParam(required = false) String sources) {
+        if (sources == null || sources.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "정리할 소스를 sources 파라미터로 명시해주세요. 예: ?sources=wevity,thinkcontest"
+            ));
+        }
+        List<String> sourceList = java.util.Arrays.stream(sources.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+        if (sourceList.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "유효한 소스명이 없습니다. 예: ?sources=wevity,thinkcontest"
+            ));
+        }
+        int cleared = crawlService.clearExternalContent(sourceList);
+        return ResponseEntity.ok(Map.of(
+                "cleared", cleared,
+                "sources", sourceList
+        ));
+    }
 }

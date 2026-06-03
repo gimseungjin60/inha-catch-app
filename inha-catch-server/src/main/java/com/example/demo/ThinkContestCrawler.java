@@ -153,62 +153,13 @@ public class ThinkContestCrawler {
             }
         }
 
-        // 본문 추출
-        Element contentEl = doc.selectFirst("#cms-content");
-        if (contentEl == null) contentEl = doc.selectFirst(".cms-main-content");
-        if (contentEl == null) contentEl = doc.selectFirst(".cont-sub");
-        if (contentEl == null) contentEl = doc.selectFirst("article");
-
-        String content = "";
-        if (contentEl != null) {
-            contentEl.select("br").append("\n");
-            contentEl.select("p").prepend("\n\n");
-            content = contentEl.text().replace("\\n", "\n").replaceAll("(?m)^[ \t]*\r?\n", "").trim();
-        }
-
-        // 본문이 너무 짧으면 전체 body에서 추출
-        if (content.length() < 50) {
-            String bodyText = doc.body().text();
-            content = bodyText.substring(0, Math.min(bodyText.length(), 3000));
-        }
-        dto.setContent(content);
-
-        // 관련 링크 + 이미지 수집
-        List<String> relatedLinks = new ArrayList<>();
-        if (contentEl != null) {
-            for (Element a : contentEl.select("a[href^=http]")) {
-                String href = a.absUrl("href");
-                if (!href.contains("thinkcontest.com") && !href.isEmpty()) {
-                    relatedLinks.add(href);
-                }
-            }
-            for (Element img : contentEl.select("img")) {
-                String imageUrl = img.hasAttr("data-src") ? img.absUrl("data-src") : img.absUrl("src");
-                if (!imageUrl.isEmpty() && imageUrl.startsWith("http")) {
-                    relatedLinks.add(imageUrl);
-                }
-            }
-        }
-        // 상세 페이지 전역에서 ld+json의 image 속성도 수집
-        for (Element script : doc.select("script[type=application/ld+json]")) {
-            try {
-                JsonNode json = objectMapper.readTree(script.data());
-                if (json.has("image")) {
-                    JsonNode imageNode = json.get("image");
-                    if (imageNode.isTextual() && imageNode.asText().startsWith("http")) {
-                        relatedLinks.add(imageNode.asText());
-                    } else if (imageNode.isArray()) {
-                        for (JsonNode n : imageNode) {
-                            if (n.isTextual() && n.asText().startsWith("http")) relatedLinks.add(n.asText());
-                        }
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
-        dto.setRelatedLinks(relatedLinks);
+        // 저작권 정책(시나리오 A): 씽굿은 본문 전문(content)과 관련 링크/이미지를 저장하지 않는다.
+        // 메타데이터(접수기간·응모대상·주최·상금)와 원문 링크만 보존한다.
+        dto.setContent(null);
+        dto.setRelatedLinks(new ArrayList<>());
         dto.setAttachments(new ArrayList<>());
 
-        log.info("[씽굿] 상세 크롤링 완료: {}", dto.getTitle());
+        log.info("[씽굿] 상세 크롤링 완료(메타데이터만): {}", dto.getTitle());
         return dto;
     }
 

@@ -139,6 +139,16 @@ export default function DetailScreen() {
   const dDayNum = parseDDayNumber(detail.dDay)
   const isUrgent = dDayNum !== null && dDayNum >= 0 && dDayNum <= 3
 
+  // 저작권 정책(시나리오 A): 외부 소스는 본문/AI 요약/챗봇을 제공하지 않고 원문 링크로 유도한다.
+  const isMetaOnly =
+    detail.sourceSite === 'wevity' || detail.sourceSite === 'thinkcontest'
+  const sourceLabel =
+    detail.sourceSite === 'wevity'
+      ? '위비티(Wevity)'
+      : detail.sourceSite === 'thinkcontest'
+      ? '씽굿(ThinkContest)'
+      : detail.sourceSite ?? '원문 사이트'
+
   return (
     <View style={[styles.container, { backgroundColor: colors.paper }]}>
       <SafeAreaView edges={['top']} style={{ backgroundColor: colors.paper }}>
@@ -226,35 +236,60 @@ export default function DetailScreen() {
           </>
         )}
 
-        {/* AI 요약 */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.stone400 }]}>AI 요약 ─ SUMMARY</Text>
-          <View
-            style={[
-              styles.aiBox,
-              { backgroundColor: colors.signalSoft },
-            ]}
-          >
-            <View style={[styles.aiMarker, { backgroundColor: colors.signal }]} />
-            {detail.detailSummary ? (
-              <Markdown
-                style={{
-                  body: { ...markdownBody, color: colors.ink, fontFamily: Fonts.regular },
-                  paragraph: { marginTop: 0, marginBottom: 6 },
-                  bullet_list: { marginTop: 0, marginBottom: 0 },
-                  list_item: { marginBottom: 4 },
-                  strong: { fontFamily: Fonts.semibold },
+        {/* AI 요약 (외부 소스는 저작권 정책상 미제공 → 원문 안내) */}
+        {isMetaOnly ? (
+          <View style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: colors.stone400 }]}>출처 ─ SOURCE</Text>
+            <View style={[styles.aiBox, { backgroundColor: colors.signalSoft }]}>
+              <View style={[styles.aiMarker, { backgroundColor: colors.signal }]} />
+              <Text style={[styles.aiText, { color: colors.ink }]}>
+                이 공고는 {sourceLabel}에서 제공돼요. 신청 자격·기간 등 핵심 정보는 아래에서 확인하고,
+                전체 내용은 원문에서 자세히 보실 수 있어요.
+              </Text>
+              <Pressable
+                onPress={async () => {
+                  if (detail.postUrl) await WebBrowser.openBrowserAsync(detail.postUrl)
                 }}
+                disabled={!detail.postUrl}
+                style={[styles.sourceLinkBtn, { borderColor: colors.signal, opacity: detail.postUrl ? 1 : 0.5 }]}
               >
-                {detail.detailSummary}
-              </Markdown>
-            ) : detail.basicSummary ? (
-              <Text style={[styles.aiText, { color: colors.ink }]}>{detail.basicSummary}</Text>
-            ) : (
-              <Text style={[styles.aiText, { color: colors.stone400 }]}>AI 요약이 아직 없어요.</Text>
-            )}
+                <ExternalLink size={14} color={colors.signal} />
+                <Text style={[styles.sourceLinkText, { color: colors.signal }]}>
+                  {sourceLabel} 원문에서 자세히 보기
+                </Text>
+              </Pressable>
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: colors.stone400 }]}>AI 요약 ─ SUMMARY</Text>
+            <View
+              style={[
+                styles.aiBox,
+                { backgroundColor: colors.signalSoft },
+              ]}
+            >
+              <View style={[styles.aiMarker, { backgroundColor: colors.signal }]} />
+              {detail.detailSummary ? (
+                <Markdown
+                  style={{
+                    body: { ...markdownBody, color: colors.ink, fontFamily: Fonts.regular },
+                    paragraph: { marginTop: 0, marginBottom: 6 },
+                    bullet_list: { marginTop: 0, marginBottom: 0 },
+                    list_item: { marginBottom: 4 },
+                    strong: { fontFamily: Fonts.semibold },
+                  }}
+                >
+                  {detail.detailSummary}
+                </Markdown>
+              ) : detail.basicSummary ? (
+                <Text style={[styles.aiText, { color: colors.ink }]}>{detail.basicSummary}</Text>
+              ) : (
+                <Text style={[styles.aiText, { color: colors.stone400 }]}>AI 요약을 준비 중이에요.</Text>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* 핵심 정보 */}
         {(detail.eligibility || detail.amountInfo || detail.applyPeriod) && (
@@ -290,8 +325,8 @@ export default function DetailScreen() {
           </>
         )}
 
-        {/* AI 챗봇 */}
-        {profile.isLoggedIn && (
+        {/* AI 챗봇 (외부 소스는 본문 컨텍스트가 없어 미제공) */}
+        {profile.isLoggedIn && !isMetaOnly && (
           <>
             <View style={[styles.divider, { backgroundColor: colors.stone100 }]} />
             <View style={styles.section}>
@@ -334,7 +369,11 @@ export default function DetailScreen() {
             ]}
           >
             <Text style={[styles.primaryBtnText, { color: colors.paper }]}>
-              {detail.postUrl ? '원문 보러가기' : '원문 링크 없음'}
+              {detail.postUrl
+                ? isMetaOnly
+                  ? '원문에서 자세히 보기'
+                  : '원문 보러가기'
+                : '원문 링크 없음'}
             </Text>
             {detail.postUrl && <ExternalLink size={14} color={colors.paper} />}
           </Pressable>
@@ -463,6 +502,21 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 14,
     lineHeight: 22,
+  },
+  sourceLinkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  sourceLinkText: {
+    fontFamily: Fonts.semibold,
+    fontSize: 13,
   },
   infoRow: {
     paddingVertical: 10,
