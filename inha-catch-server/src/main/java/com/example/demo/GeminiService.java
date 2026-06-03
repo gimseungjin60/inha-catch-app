@@ -58,6 +58,10 @@ public class GeminiService {
     @Value("${gemini.api.key:}")
     private String apiKey;
 
+    // 모델명은 properties(gemini.model)에서 주입 — 요약/챗봇 두 호출이 공유
+    @Value("${gemini.model:gemini-2.5-flash-lite}")
+    private String model;
+
     private final RestTemplate restTemplate;
 
     public GeminiService() {
@@ -73,7 +77,7 @@ public class GeminiService {
         }
 
         String truncatedContent = content.length() > 5000 ? content.substring(0, 5000) : content;
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey;
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + apiKey;
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -145,7 +149,7 @@ public class GeminiService {
             return "질문 내용이 비어있습니다.";
         }
 
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey;
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + apiKey;
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
