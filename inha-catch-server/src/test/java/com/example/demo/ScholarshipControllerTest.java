@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc(addFilters = false) // 보안/레이트리밋 필터 비활성 — 컨트롤러 응답 자체를 검증
 @Import(JwtUtil.class)                     // @WebMvcTest가 생성하는 JwtAuthenticationFilter 빈의 의존성
 @TestPropertySource(properties = {
-        "jwt.secret=***REMOVED***"
+        "jwt.secret=d6XoAo6h7HQQDRYL0br/s6vH7hS7Wdc2n/BG/lplbkCU3G76p9F8E5ggLFaoDF+q"
 })
 class ScholarshipControllerTest {
 

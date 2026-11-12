@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc(addFilters = false) // 보안/레이트리밋 필터 비활성 — 컨트롤러 응답 자체를 검증
 @Import(JwtUtil.class)                     // 토큰 발급용 실제 빈 (응답의 token/refreshToken 검증)
 @TestPropertySource(properties = {
-        "jwt.secret=***REMOVED***"
+        "jwt.secret=d6XoAo6h7HQQDRYL0br/s6vH7hS7Wdc2n/BG/lplbkCU3G76p9F8E5ggLFaoDF+q"
 })
 class AuthControllerTest {
 
